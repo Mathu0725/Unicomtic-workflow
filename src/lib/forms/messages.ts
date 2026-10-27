@@ -26,6 +26,6 @@ export const formMessageFields: { key: FormMessageKey; label: string; maxLength:
   { key: "autoSaveMessage", label: "Automatic draft saving message", maxLength: 1500, rows: 3, hint: "Shown below the submit instructions. Editing this text does not change automatic draft saving." },
   { key: "draftRestoredMessage", label: "Restored draft message", maxLength: 1500, rows: 3 },
   { key: "submitButtonLabel", label: "Submit button text", maxLength: 100, required: true, hint: "Keep the submit instructions consistent with this button text." },
-  { key: "viewInstructionsLabel", label: "View instructions button text", maxLength: 100, required: true },
+  { key: "viewInstructionsLabel", label: "View instructions button text", maxLength: 100, hint: "Optional. Leave empty to hide this button; the instructions popup still opens automatically." },
   { key: "continueButtonLabel", label: "Popup continue button text", maxLength: 100, required: true },
 ];

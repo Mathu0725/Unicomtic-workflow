@@ -8,6 +8,8 @@ Use **Preview popup** to inspect the instructions dialog. The below-button previ
 
 Messages are plain text. Separate additional popup bullet points with a blank line. Optional text can be cleared to hide it. Editing the wording does not disable automatic draft saving or alter submission processing.
 
+**View instructions button text** is optional. Leave it empty to hide the reopen button. The popup still opens automatically, and **Preview popup** remains available in Builder.
+
 **Load default messages** prepares the original wording in the editor; save to apply it. Existing forms retain the original defaults until edited. Duplicating a form copies its saved messages, and later edits remain independent.
 
 If another administrator changes the form, reload and review the current version before saving. Public visitors receive only resolved display messages; email automation and integration credentials remain private.

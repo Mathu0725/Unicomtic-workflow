@@ -10,7 +10,7 @@ import { POST as createForm } from "../../src/app/api/admin/forms/route";
 import { GET as readPublicForm } from "../../src/app/api/forms/[slug]/route";
 import { transaction, readDatabase } from "../../src/lib/data/repository";
 import { signSession, SESSION_COOKIE } from "../../src/lib/security/session";
-import { defaultFormMessages, resolveFormMessages } from "../../src/lib/forms/messages";
+import { defaultFormMessages, formMessageFields, resolveFormMessages } from "../../src/lib/forms/messages";
 import FormInstructions from "../../src/components/form-instructions";
 import FormSubmitMessages from "../../src/components/form-submit-messages";
 
@@ -68,6 +68,20 @@ it("merges partial message updates and retains explicitly hidden optional text",
   expect(copy.submitEnglish).toBe("Saved directions"); expect(copy.popupNotes).toBe("One\n\nTwo"); expect(copy.submitTamil).toBe(""); expect(copy.autoSaveMessage).toBe("");
   const html = renderToStaticMarkup(createElement(FormSubmitMessages, { messages: copy }));
   expect(html).toContain("Saved directions"); expect(html).not.toContain(defaultFormMessages.autoSaveMessage); expect(html).not.toContain('lang="ta"');
+});
+
+it.each(["", "   "])("saves an optional empty instructions button label and keeps the popup preview usable (%j)", async label => {
+  expect(formMessageFields.find(field => field.key === "viewInstructionsLabel")?.required).not.toBe(true);
+  expect((await save({ viewInstructionsLabel: label })).status).toBe(200);
+  const messages = (await publicCopy()).messages;
+  expect(messages.viewInstructionsLabel).toBe("");
+  expect((await form()).messages?.viewInstructionsLabel).toBe("");
+  const popup = renderToStaticMarkup(createElement(FormInstructions, { messages }));
+  expect(popup).not.toContain("View instructions");
+  expect(popup).toContain('aria-label="Close instructions"');
+  expect(popup).toContain(defaultFormMessages.continueButtonLabel);
+  const preview = renderToStaticMarkup(createElement(FormInstructions, { messages, autoOpen: false, triggerLabel: "Preview popup" }));
+  expect(preview).toContain("Preview popup");
 });
 
 it.each([
