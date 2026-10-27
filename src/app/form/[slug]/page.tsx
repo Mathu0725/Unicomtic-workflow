@@ -3,6 +3,8 @@
 import { useState, useEffect, useRef } from "react";
 import { useParams } from "next/navigation";
 import FormInstructions from "@/components/form-instructions";
+import FormSubmitMessages from "@/components/form-submit-messages";
+import { resolveFormMessages } from "@/lib/forms/messages";
 import FormThankYou from "@/components/form-thank-you";
 import DocumentUploadField from "@/components/document-upload-field";
 import { submitRequest } from "@/lib/client/submit";
@@ -248,6 +250,7 @@ export default function PublicCustomFormPage() {
   }
 
   if (submitted) return <FormThankYou />;
+  const messages = resolveFormMessages(form.messages);
 
   const content = (
     <div className="min-h-screen bg-slate-50 py-10 px-4 sm:px-6 lg:px-8 accent-[#4d4d4d]">
@@ -260,7 +263,7 @@ export default function PublicCustomFormPage() {
           </div>
         )}
 
-        <FormInstructions key={slug} />
+        <FormInstructions key={slug} messages={messages} />
 
         {/* Draft Notification Banner */}
         {draftError && <p role="status" className="rounded-lg border border-neutral-200 bg-neutral-50 p-3 text-sm text-neutral-900">{draftError}</p>}
@@ -268,8 +271,8 @@ export default function PublicCustomFormPage() {
           <div className="mb-4 p-3 rounded-xl bg-neutral-50 border border-neutral-200 text-neutral-900 text-xs flex items-center justify-between shadow-2xs">
             <div className="flex items-center gap-2">
               <CheckCircle2 className="w-4 h-4 text-neutral-600 flex-shrink-0" />
-              <span>
-                Partially completed Application Form restored. (முழுமையாக பூர்த்தி செய்யப்படாத விண்ணப்பப் படிவம் மீளமைக்கப்பட்டது).
+              <span className="whitespace-pre-wrap break-words">
+                {messages.draftRestoredMessage}
               </span>
             </div>
             <button
@@ -515,22 +518,12 @@ export default function PublicCustomFormPage() {
                 ) : (
                   <>
                     <CheckCircle2 className="w-5 h-5" />
-                    Apply / விண்ணப்பிக்கவும்
+                    {messages.submitButtonLabel}
                   </>
                 )}
               </button>
 
-              <div className="text-center space-y-1">
-                <p className="text-[11px] text-slate-600 font-semibold">
-                  Press apply at the bottom of the page to complete the application.
-                </p>
-                <p className="text-[11px] text-slate-500">
-                  விண்ணப்பத்தை பூர்த்தி செய்ய இப்பக்கத்தின் கீழே உள்ள <strong>apply</strong> என்பதை அழுத்தவும்.
-                </p>
-                <p className="text-[10px] text-slate-400 pt-1">
-                  Partially completed Application Form is saved automatically. (முழுமையாக பூர்த்தி செய்யப்படாத விண்ணப்பப் படிவத்தை சேமித்து பின்னர் தொடரலாம்).
-                </p>
-              </div>
+              <FormSubmitMessages messages={messages} />
             </div>
           </form>
         </div>

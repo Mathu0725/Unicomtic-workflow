@@ -1,4 +1,16 @@
 import { z } from "zod";
+export const formMessagesSchema = z.object({
+  popupTitle: z.string().trim().min(1).max(160),
+  popupSubtitle: z.string().trim().max(300),
+  submitEnglish: z.string().trim().max(1500),
+  submitTamil: z.string().trim().max(1500),
+  popupNotes: z.string().trim().max(8000),
+  autoSaveMessage: z.string().trim().max(1500),
+  draftRestoredMessage: z.string().trim().max(1500),
+  submitButtonLabel: z.string().trim().min(1).max(100),
+  viewInstructionsLabel: z.string().trim().min(1).max(100),
+  continueButtonLabel: z.string().trim().min(1).max(100),
+}).partial().strict();
 export const fieldsSchema = z.array(z.object({ id: z.string().max(128).regex(/^[a-zA-Z][\w-]*$/), type: z.enum(["text", "textarea", "email", "phone", "nic", "district", "select", "radio", "checkbox", "date", "number", "terms", "file"]), label: z.string().min(1).max(1000), required: z.boolean(), placeholder: z.string().optional(), helpText: z.string().optional(), options: z.array(z.string().max(1000)).max(200).optional(), defaultValue: z.any().optional(), systemKey: z.enum(["fullName", "nameWithInitials", "nic", "email", "phone", "district", "dob", "address", "gender", "whatsapp"]).optional() })).max(100).refine(fields => fields.filter(field => field.type === "file").length <= 10, "Use at most 10 document questions per form.").refine(fields => !fields.some(field => field.type === "file" && field.systemKey), "Document questions cannot be identity fields.").refine(fields => new Set(fields.map(f => f.id)).size === fields.length, "Field IDs must be unique.");
 export const workshopConfigSchema = z.object({ enabled: z.boolean(), required: z.boolean(), workshop_ids: z.array(z.string()).max(100) });
 export const sheetsConfigSchema = z.object({ enabled: z.boolean(), sheet_id: z.string(), sheet_name: z.string().min(1).max(100), auto_sync: z.boolean(), last_synced_at: z.string().nullable().optional() });

@@ -6,6 +6,7 @@ import { hasDriveAccess } from "@/lib/google/oauth";
 import { requireCandidateAccess } from "@/lib/security/candidate-access";
 import { documentAnswer } from "@/lib/documents/receipts";
 import { findPublicForm } from "@/lib/forms/public-links";
+import { resolveFormMessages } from "@/lib/forms/messages";
 export const dynamic = "force-dynamic";
 export const GET = route(async (req, { params }: {
     params: {
@@ -17,7 +18,7 @@ export const GET = route(async (req, { params }: {
         throw new RequestError("This form is unavailable or closed.", 404);
     const documents = getDb().integrations.drive_documents;
     const documentUploadsReady = hasDriveAccess() && documents?.ready && documents.google_email === getDb().integrations.google?.email;
-    return NextResponse.json({ success: true, form: { id: form.id, version: form.updated_at, slug: form.slug, title: form.title, description: form.description, type: form.type, fields: form.fields, documentUploadsReady: Boolean(documentUploadsReady), confirmationMessage: form.confirmation_message, workshops: form.workshop_config?.enabled ? availableWorkshops(form.campaign_id, form.workshop_config.workshop_ids) : [], workshopRequired: form.workshop_config?.enabled && form.workshop_config.required, workshopEnabled: form.workshop_config?.enabled, googleFormConfig: { enabled: form.google_form_config?.enabled, formUrl: form.google_form_config?.form_url, responseMode: form.google_form_config?.response_mode } } }, { headers: { "Cache-Control": "no-store" } });
+    return NextResponse.json({ success: true, form: { id: form.id, version: form.updated_at, slug: form.slug, title: form.title, description: form.description, messages: resolveFormMessages(form.messages), type: form.type, fields: form.fields, documentUploadsReady: Boolean(documentUploadsReady), confirmationMessage: form.confirmation_message, workshops: form.workshop_config?.enabled ? availableWorkshops(form.campaign_id, form.workshop_config.workshop_ids) : [], workshopRequired: form.workshop_config?.enabled && form.workshop_config.required, workshopEnabled: form.workshop_config?.enabled, googleFormConfig: { enabled: form.google_form_config?.enabled, formUrl: form.google_form_config?.form_url, responseMode: form.google_form_config?.response_mode } } }, { headers: { "Cache-Control": "no-store" } });
 });
 export const POST = route(async (req, { params }: {
     params: {
