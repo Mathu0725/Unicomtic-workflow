@@ -1,0 +1,20 @@
+import { NextResponse } from "next/server";
+import { z } from "zod";
+import { route, RequestError } from "@/lib/http";
+import { getDb } from "@/lib/data/store";
+import { getSession } from "@/lib/security/session";
+import { randomUUID } from "node:crypto";
+export const dynamic = "force-dynamic";
+export const GET = route(async () => NextResponse.json({ success: true, settings: getDb().settings }), true);
+export const POST = route(async req => {
+    const data = z.object({ version: z.number().int().nonnegative(), termsVersion: z.string().trim().min(1).max(64), termsContent: z.string().trim().min(30).max(20000), institutionName: z.string().trim().min(2).max(255), contactEmail: z.string().email().or(z.literal("")), phone: z.string().trim().max(50) }).parse(await req.json());
+    const db = getDb(), current = db.settings;
+    if (current.version !== data.version) throw new RequestError("Settings changed in another session. Reload and review your changes.", 409, { code: "VERSION_CONFLICT" });
+    if (current.termsContent !== data.termsContent && current.termsVersion === data.termsVersion) throw new RequestError("Use a new policy version when changing the Terms & Conditions.", 400, { fieldErrors: { termsVersion: ["Enter a new version identifier."] } });
+    if (current.termsVersion !== data.termsVersion && db.policyVersions.some(p => p.version === data.termsVersion)) throw new RequestError("This policy version was used before. Use a new identifier.", 409);
+    if (!db.policyVersions.some(p => p.version === current.termsVersion)) db.policyVersions.push({ version: current.termsVersion, content: current.termsContent, activated_at: "migrated" });
+    if (current.termsVersion !== data.termsVersion) db.policyVersions.push({ version: data.termsVersion, content: data.termsContent, activated_at: new Date().toISOString() });
+    db.settings = { ...data, version: current.version + 1 };
+    db.auditLogs.push({ id: randomUUID(), action: "SETTINGS_SAVED", entity_name: "settings", entity_id: "portal", user_email: getSession(req)!.email, changes: { version: db.settings.version, termsVersion: data.termsVersion }, created_at: new Date().toISOString() });
+    return NextResponse.json({ success: true, settings: db.settings, message: "Settings saved." });
+}, true);

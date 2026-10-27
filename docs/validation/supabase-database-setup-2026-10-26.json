@@ -1,0 +1,67 @@
+{
+  "verifiedAt": "2026-10-26T04:39:30.815Z",
+  "project": "iwipyqxxeqrmirqqwlxd",
+  "storage": "supabase",
+  "canonicalTable": "public.platform_state",
+  "appliedMigrations": [
+    "001_initial_schema.sql",
+    "002_rls_policies.sql",
+    "003_seed_data.sql",
+    "004_custom_forms.sql",
+    "005_google_form_and_sync.sql",
+    "006_durable_platform_state.sql",
+    "20261026040711_platform_state_hardening.sql",
+    "20261026043245_remove_legacy_client_policies.sql"
+  ],
+  "tables": 28,
+  "rlsEnabledOnAllTables": true,
+  "securityAdvisor": {
+    "errors": 0,
+    "warnings": 0,
+    "informational": "platform_state has RLS with no client policy; intentional server-only access"
+  },
+  "snapshot": {
+    "version": 0,
+    "counts": {
+      "exams": 0,
+      "outbox": 3,
+      "courses": 3,
+      "students": 1,
+      "auditLogs": 6,
+      "campaigns": 1,
+      "emailJobs": 0,
+      "workshops": 0,
+      "attendance": 0,
+      "interviews": 0,
+      "customForms": 2,
+      "examResults": 0,
+      "applications": 0,
+      "emailAccounts": 1,
+      "registrations": 1,
+      "sheetSyncJobs": 0,
+      "policyVersions": 1,
+      "formSubmissions": 1,
+      "workshopBookings": 0,
+      "selectionDecisions": 0,
+      "submissionReceipts": 0,
+      "interviewCandidates": 0,
+      "interviewEvaluations": 0
+    },
+    "sha256": "e978f302352633e83d1c76e57ab95f0d6d4076abca26f0916974974311102249"
+  },
+  "checks": {
+    "sqlContractAndPermissionTests": "passed; all test writes rolled back",
+    "anonymousDataApiReadDenied": true,
+    "anonymousDataApiWriteDenied": true,
+    "repeatImport": "identical; no duplicate or overwrite",
+    "verifiedBackups": "pre-import local snapshot and cloud admissions snapshot",
+    "regressionTests": {
+      "passed": 100,
+      "files": 23
+    },
+    "typescript": "passed",
+    "http": "homepage, admin/forms, api/health and both public form APIs returned 200",
+    "browser": "signed-in Forms Studio reloaded with both preserved forms and response count"
+  },
+  "scope": "Current aggregate repository connected and preserved; production-host deployment and live cloud burst testing are separate."
+}

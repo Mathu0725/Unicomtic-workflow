@@ -1,0 +1,87 @@
+{
+  "environment": "isolated local Next.js development server; no real Google calls or email sends",
+  "concurrency": 300,
+  "results": [
+    {
+      "name": "dashboard reads during submission burst",
+      "requests": 30,
+      "statuses": {
+        "200": 30
+      },
+      "durationMs": 7302,
+      "p50Ms": 15,
+      "p95Ms": 1548
+    },
+    {
+      "name": "unique simultaneous registrations",
+      "requests": 300,
+      "statuses": {
+        "200": 300
+      },
+      "durationMs": 13147,
+      "p50Ms": 8965,
+      "p95Ms": 12633
+    },
+    {
+      "name": "50 overlapping retries of one submission",
+      "requests": 50,
+      "statuses": {
+        "200": 50
+      },
+      "durationMs": 1733,
+      "p50Ms": 1197,
+      "p95Ms": 1686
+    },
+    {
+      "name": "duplicate identity with different retry keys",
+      "requests": 20,
+      "statuses": {
+        "409": 20
+      },
+      "durationMs": 593,
+      "p50Ms": 418,
+      "p95Ms": 591
+    },
+    {
+      "name": "100 contenders for 25 workshop seats",
+      "requests": 100,
+      "statuses": {
+        "200": 25,
+        "409": 75
+      },
+      "durationMs": 4799,
+      "p50Ms": 3278,
+      "p95Ms": 4664
+    },
+    {
+      "name": "concurrent verified applications linked to registrations",
+      "requests": 50,
+      "statuses": {
+        "200": 50
+      },
+      "durationMs": 4918,
+      "p50Ms": 3748,
+      "p95Ms": 4783
+    }
+  ],
+  "responseLossRecovery": {
+    "passed": true,
+    "durationMs": 97,
+    "replayed": true
+  },
+  "snapshotBytes": 1651298,
+  "storageFaultRecovery": {
+    "passed": true,
+    "resetPrevented": true,
+    "safeErrorCode": "STORAGE_CORRUPT"
+  },
+  "finalCounts": {
+    "registrations": 327,
+    "students": 327,
+    "applications": 50,
+    "confirmedSeats": 25,
+    "uniqueJobs": 1156,
+    "actualProviderCalls": 0
+  },
+  "passed": true
+}

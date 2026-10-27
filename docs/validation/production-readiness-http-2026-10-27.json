@@ -1,0 +1,73 @@
+{
+  "environment": "Isolated local Next production process; existing Supabase snapshot read-only; temporary signing credentials",
+  "providerDispatchesRequested": 0,
+  "results": [
+    {
+      "url": "/api/health",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "url": "/api/health/ready",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "url": "/login",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "url": "/register",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "url": "/status",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "url": "/apply",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "url": "/logo.png",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "url": "/api/status?ref=TEST-ONLY",
+      "method": "GET",
+      "status": 401
+    },
+    {
+      "url": "/api/cron/process-queue",
+      "method": "GET",
+      "status": 401
+    },
+    {
+      "url": "/api/cron/process-queue",
+      "method": "HEAD",
+      "status": 405
+    },
+    {
+      "url": "/api/cron/process-queue?check=1",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "url": "/.env.local",
+      "method": "GET",
+      "status": 404
+    },
+    {
+      "url": "/.data/platform.json",
+      "method": "GET",
+      "status": 404
+    }
+  ],
+  "passed": true,
+  "databaseUnchanged": true
+}

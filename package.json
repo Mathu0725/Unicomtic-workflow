@@ -1,0 +1,58 @@
+{
+  "name": "unicom-tic-platform",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Unicom TIC - Complete Student Lifecycle Management Platform",
+  "scripts": {
+    "dev": "next dev --webpack",
+    "build": "next build --webpack && node scripts/prepare-deployment-files.mjs",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "worker": "node scripts/notification-worker.mjs",
+    "backup:local": "node scripts/backup-local.mjs",
+    "backup:supabase": "node scripts/backup-supabase.mjs",
+    "backup:verify": "node scripts/verify-backup.mjs",
+    "deploy:check": "node scripts/production-check.mjs",
+    "db:check": "node scripts/database-check.mjs",
+    "db:import:local": "node scripts/migrate-local-to-supabase.mjs",
+    "test:load": "node scripts/load-test.mjs",
+    "test": "node scripts/test.mjs",
+    "test:watch": "node scripts/test.mjs --watch"
+  },
+  "dependencies": {
+    "@hookform/resolvers": "5.2.2",
+    "@supabase/ssr": "0.5.2",
+    "@supabase/supabase-js": "2.118.0",
+    "clsx": "^2.1.1",
+    "date-fns": "^4.1.0",
+    "lucide-react": "^0.460.0",
+    "next": "16.4.3",
+    "nodemailer": "10.2.1",
+    "papaparse": "^5.4.1",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "react-hook-form": "^7.53.2",
+    "tailwind-merge": "^2.5.4",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^22.9.0",
+    "@types/nodemailer": "8.0.2",
+    "@types/papaparse": "^5.3.15",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "autoprefixer": "^10.4.20",
+    "postcss": "8.5.31",
+    "tailwindcss": "3.4.19",
+    "typescript": "^5.6.3",
+    "vite": "8.3.5",
+    "vitest": "5.0.5"
+  },
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "overrides": {
+    "postcss-selector-parser": "7.1.6"
+  }
+}
