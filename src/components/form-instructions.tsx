@@ -9,6 +9,7 @@ export default function FormInstructions({ messages, autoOpen = true, triggerLab
   const [open, setOpen] = useState(autoOpen);
   const id = useId(), copy = resolveFormMessages(messages);
   const notes = copy.popupNotes.split(/\n\s*\n/).filter(note => note.trim());
+  const buttonLabel = triggerLabel || copy.viewInstructionsLabel.trim();
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -26,14 +27,14 @@ export default function FormInstructions({ messages, autoOpen = true, triggerLab
 
   return (
     <div className="mb-4 flex justify-end">
-      <button
+      {buttonLabel && <button
         type="button"
         onClick={() => setOpen(true)}
         className="inline-flex items-center gap-1.5 rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs font-semibold text-neutral-700 hover:bg-neutral-50"
       >
         <FileText className="h-3.5 w-3.5" aria-hidden="true" />
-        {triggerLabel || copy.viewInstructionsLabel}
-      </button>
+        {buttonLabel}
+      </button>}
 
       <dialog
         ref={dialogRef}
