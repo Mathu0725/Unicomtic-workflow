@@ -10,7 +10,7 @@ import type { DocumentUpload } from "../documents/receipts";
 import type { Integrations, OutboxJob, WorkshopBooking, SubmissionReceipt, QueueControl } from "./types";
 import { defaultSettings } from "../settings";
 import type { NotificationTemplateId, SavedEmailTemplate } from "../email/template-catalog";
-import type { FormMessages } from "../forms/messages";
+import type { FormMessageDisplay, FormMessages } from "../forms/messages";
 
 export interface Campaign {
   id: string;
@@ -278,6 +278,7 @@ export interface CustomForm {
   slug: string;
   previous_slugs?: string[];
   messages?: Partial<FormMessages>;
+  message_display?: Partial<FormMessageDisplay>;
   title: string;
   description: string;
   type: "registration" | "application" | "workshop_rsvp" | "custom";

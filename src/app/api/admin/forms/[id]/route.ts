@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { route, RequestError } from "@/lib/http";
 import { getDb } from "@/lib/data/store";
-import { fieldsSchema, workshopConfigSchema, sheetsConfigSchema, googleFormSchema, automationSchema, formMessagesSchema } from "@/lib/validations/forms";
+import { fieldsSchema, workshopConfigSchema, sheetsConfigSchema, googleFormSchema, automationSchema, formMessagesSchema, formMessageDisplaySchema } from "@/lib/validations/forms";
 import { audit } from "@/lib/admissions/service";
 import { formLinkTaken, formSlugProblem } from "@/lib/forms/public-links";
 export const dynamic = "force-dynamic";
@@ -25,11 +25,11 @@ export const PATCH = route(async (req, { params }: {
     const form = find(params.id);
     if (!form)
         throw new RequestError("Form not found.", 404);
-    const parsed = z.object({ expectedUpdatedAt: z.string().optional(), title: z.string().trim().min(3).max(255).optional(), description: z.string().optional(), messages: formMessagesSchema.optional(), slug: z.string().trim().toLowerCase().refine(value => !formSlugProblem(value), "Use 1–100 lowercase letters, numbers and single hyphens, such as tic-2027-registration.").optional(), is_active: z.boolean().optional(), fields: fieldsSchema.optional(), google_form_config: googleFormSchema.optional(), google_sheets_config: sheetsConfigSchema.optional(), email_automation: automationSchema.optional(), confirmation_message: z.string().optional(), redirect_url: z.string().url().or(z.literal("")).optional(), workshop_config: workshopConfigSchema.optional() }).safeParse(await req.json());
+    const parsed = z.object({ expectedUpdatedAt: z.string().optional(), title: z.string().trim().min(3).max(255).optional(), description: z.string().optional(), messages: formMessagesSchema.optional(), message_display: formMessageDisplaySchema.optional(), slug: z.string().trim().toLowerCase().refine(value => !formSlugProblem(value), "Use 1–100 lowercase letters, numbers and single hyphens, such as tic-2027-registration.").optional(), is_active: z.boolean().optional(), fields: fieldsSchema.optional(), google_form_config: googleFormSchema.optional(), google_sheets_config: sheetsConfigSchema.optional(), email_automation: automationSchema.optional(), confirmation_message: z.string().optional(), redirect_url: z.string().url().or(z.literal("")).optional(), workshop_config: workshopConfigSchema.optional() }).safeParse(await req.json());
     if (!parsed.success)
         throw new RequestError(parsed.error.issues[0].message);
     const changingLink = parsed.data.slug !== undefined && parsed.data.slug !== form.slug;
-    if (parsed.data.messages !== undefined && !parsed.data.expectedUpdatedAt) throw new RequestError("Reload this form before changing its messages.", 409, { code: "VERSION_CONFLICT" });
+    if ((parsed.data.messages !== undefined || parsed.data.message_display !== undefined) && !parsed.data.expectedUpdatedAt) throw new RequestError("Reload this form before changing its messages.", 409, { code: "VERSION_CONFLICT" });
     if (changingLink && !parsed.data.expectedUpdatedAt) throw new RequestError("Reload this form before changing its public link.", 409, { code: "VERSION_CONFLICT" });
     if (parsed.data.slug && formLinkTaken(getDb().customForms, parsed.data.slug, form.id))
         throw new RequestError("That public link belongs to another form or its previously shared link. Choose a different name.", 409, { code: "FORM_LINK_TAKEN" });
@@ -42,6 +42,7 @@ export const PATCH = route(async (req, { params }: {
         incoming.google_form_config.webhook_secret = form.google_form_config?.webhook_secret || crypto.randomUUID();
     const previousSlug = form.slug;
     if (incoming.messages) incoming.messages = { ...form.messages, ...incoming.messages };
+    if (incoming.message_display) incoming.message_display = { ...form.message_display, ...incoming.message_display };
     if (changingLink) form.previous_slugs = [...new Set([...(form.previous_slugs || []), previousSlug])].filter(slug => slug !== incoming.slug);
     Object.assign(form, incoming, { updated_at: new Date(Math.max(Date.now(), Date.parse(form.updated_at) + 1 || 0)).toISOString() });
     audit("FORM_UPDATED", "custom_forms", form.id, { title: form.title, ...(changingLink ? { previousSlug, slug: form.slug } : {}) });

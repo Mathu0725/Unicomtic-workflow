@@ -10,7 +10,7 @@ import { POST as createForm } from "../../src/app/api/admin/forms/route";
 import { GET as readPublicForm } from "../../src/app/api/forms/[slug]/route";
 import { transaction, readDatabase } from "../../src/lib/data/repository";
 import { signSession, SESSION_COOKIE } from "../../src/lib/security/session";
-import { defaultFormMessages, formMessageFields, resolveFormMessages } from "../../src/lib/forms/messages";
+import { defaultFormMessageDisplay, defaultFormMessages, formMessageFields, resolveFormMessageDisplay, resolveFormMessages } from "../../src/lib/forms/messages";
 import FormInstructions from "../../src/components/form-instructions";
 import FormSubmitMessages from "../../src/components/form-submit-messages";
 
@@ -22,6 +22,9 @@ function request(body?: unknown, role: string | undefined = "super_admin", url =
 }
 async function save(messages: unknown, formId = id, expectedUpdatedAt?: string) {
   return PATCH(request({ messages, expectedUpdatedAt: expectedUpdatedAt ?? (await form(formId)).updated_at }, "super_admin", `/api/admin/forms/${formId}`), { params: { id: formId } });
+}
+async function saveDisplay(message_display: unknown, formId = id, expectedUpdatedAt?: string) {
+  return PATCH(request({ message_display, expectedUpdatedAt: expectedUpdatedAt ?? (await form(formId)).updated_at }, "super_admin", `/api/admin/forms/${formId}`), { params: { id: formId } });
 }
 async function publicCopy(formId = id) {
   const current = await form(formId);
@@ -40,6 +43,8 @@ it("provides the existing message defaults for old forms without changing saved 
   const before = await readDatabase();
   expect(before.customForms[0].messages).toBeUndefined();
   expect((await publicCopy()).messages).toEqual(defaultFormMessages);
+  expect(before.customForms[0].message_display).toBeUndefined();
+  expect((await publicCopy()).message_display).toEqual(defaultFormMessageDisplay);
   expect(await readDatabase()).toEqual(before);
 });
 
@@ -57,8 +62,69 @@ it("persists different English and Tamil messages for each form without changing
 });
 
 it.each(["", "examiner", "entrance_staff"])("rejects message changes from an unauthorized user (%s)", async role => {
-  const response = await PATCH(request({ messages: { popupTitle: "Unauthorized" }, expectedUpdatedAt: (await form()).updated_at }, role), { params: { id } });
+  const response = await PATCH(request({ messages: { popupTitle: "Unauthorized" }, message_display: { popup_enabled: false, bottom_messages_enabled: false }, expectedUpdatedAt: (await form()).updated_at }, role), { params: { id } });
   expect(response.status).toBe(role ? 403 : 401); expect((await form()).messages).toBeUndefined();
+  expect((await form()).message_display).toBeUndefined();
+});
+
+it.each([
+  { popup_enabled: true, bottom_messages_enabled: true },
+  { popup_enabled: false, bottom_messages_enabled: true },
+  { popup_enabled: true, bottom_messages_enabled: false },
+  { popup_enabled: false, bottom_messages_enabled: false },
+])("persists and renders independent per-form visibility switches (%j)", async display => {
+  const before = await readDatabase();
+  await save({ popupTitle: "Saved popup", submitEnglish: "Saved English instructions", submitTamil: "சேமிக்கப்பட்ட தமிழ் வழிமுறைகள்", autoSaveMessage: "Saved draft notice" });
+  expect((await saveDisplay(display)).status).toBe(200);
+  const publicForm = await publicCopy();
+  expect(publicForm.message_display).toEqual(display);
+  expect((await form()).message_display).toEqual(display);
+  const admin = await readAdminForm(request(), { params: { id } });
+  expect((await admin.json()).form.message_display).toEqual(display);
+  const popup = renderToStaticMarkup(createElement(FormInstructions, { messages: publicForm.messages, enabled: publicForm.message_display.popup_enabled }));
+  const footer = renderToStaticMarkup(createElement(FormSubmitMessages, { messages: publicForm.messages, enabled: publicForm.message_display.bottom_messages_enabled }));
+  if (display.popup_enabled) expect(popup).toContain("Saved popup");
+  else expect(popup).toBe("");
+  if (display.bottom_messages_enabled) {
+    for (const text of ["Saved English instructions", "சேமிக்கப்பட்ட தமிழ் வழிமுறைகள்", "Saved draft notice"]) expect(footer).toContain(text);
+  } else expect(footer).toBe("");
+  expect((await publicCopy("form-app-2025")).message_display).toEqual(defaultFormMessageDisplay);
+  const after = await readDatabase();
+  expect(after.formSubmissions).toEqual(before.formSubmissions); expect(after.outbox).toEqual(before.outbox); expect(after.registrations).toEqual(before.registrations);
+});
+
+it("retains all wording while disabling and reenabling messages and merges partial visibility changes", async () => {
+  await save({ popupTitle: "Keep this popup", submitEnglish: "Keep these instructions", submitTamil: "தமிழை வைத்திருக்கவும்", viewInstructionsLabel: "", autoSaveMessage: "Keep this draft notice" });
+  const saved = (await publicCopy()).messages;
+  await saveDisplay({ popup_enabled: false, bottom_messages_enabled: false });
+  expect((await publicCopy()).messages).toEqual(saved);
+  await save({ popupTitle: "Edited while disabled" });
+  expect((await publicCopy()).message_display).toEqual({ popup_enabled: false, bottom_messages_enabled: false });
+  await saveDisplay({ popup_enabled: true });
+  expect((await publicCopy()).message_display).toEqual({ popup_enabled: true, bottom_messages_enabled: false });
+  await saveDisplay({ bottom_messages_enabled: true });
+  const restored = await publicCopy();
+  expect(restored.message_display).toEqual(defaultFormMessageDisplay);
+  expect(restored.messages).toEqual({ ...saved, popupTitle: "Edited while disabled" });
+});
+
+it.each([
+  { popup_enabled: "false" }, { bottom_messages_enabled: 0 }, { popup_enabled: null },
+  { unknownSwitch: false }, null, [],
+])("rejects invalid display settings without changing the form (%j)", async display => {
+  const before = await form();
+  expect((await saveDisplay(display)).status).toBe(400);
+  expect(await form()).toEqual(before);
+});
+
+it("requires a current version for visibility-only saves and rejects stale switches", async () => {
+  const previous = (await form()).updated_at;
+  expect((await PATCH(request({ message_display: { popup_enabled: false } }), { params: { id } })).status).toBe(409);
+  expect((await form()).message_display).toBeUndefined();
+  expect((await saveDisplay({ popup_enabled: false })).status).toBe(200);
+  const stale = await saveDisplay({ bottom_messages_enabled: false }, id, previous);
+  expect(stale.status).toBe(409); expect((await stale.json()).code).toBe("VERSION_CONFLICT");
+  expect((await publicCopy()).message_display).toEqual({ popup_enabled: false, bottom_messages_enabled: true });
 });
 
 it("merges partial message updates and retains explicitly hidden optional text", async () => {
@@ -102,11 +168,16 @@ it("requires the latest form version and preserves another administrator's saved
 
 it("copies custom messages when duplicating a form and keeps later edits independent", async () => {
   await save({ popupTitle: "Original custom title", autoSaveMessage: "Original draft notice" });
+  await saveDisplay({ popup_enabled: false, bottom_messages_enabled: false });
   const duplicated = await createForm(request({ action: "duplicate", formId: id }, "super_admin", "/api/admin/forms", "POST"), undefined);
   expect(duplicated.status).toBe(200); const copy = (await duplicated.json()).form;
   expect(copy.messages.popupTitle).toBe("Original custom title");
+  expect(copy.message_display).toEqual({ popup_enabled: false, bottom_messages_enabled: false });
   await save({ popupTitle: "Copied form only" }, copy.id);
+  await saveDisplay({ popup_enabled: true }, copy.id);
   expect((await publicCopy(copy.id)).messages.popupTitle).toBe("Copied form only"); expect((await publicCopy()).messages.popupTitle).toBe("Original custom title");
+  expect((await publicCopy(copy.id)).message_display).toEqual({ popup_enabled: true, bottom_messages_enabled: false });
+  expect((await publicCopy()).message_display).toEqual({ popup_enabled: false, bottom_messages_enabled: false });
 });
 
 it("renders the saved directions in both the popup and footer and escapes markup", () => {
@@ -120,4 +191,7 @@ it("renders the saved directions in both the popup and footer and escapes markup
 it("resolves defaults independently for each form", () => {
   const first = resolveFormMessages({ popupTitle: "First" }); first.submitEnglish = "Changed locally";
   const second = resolveFormMessages(); expect(second.popupTitle).toBe(defaultFormMessages.popupTitle); expect(second.submitEnglish).toBe(defaultFormMessages.submitEnglish);
+  const display = resolveFormMessageDisplay({ popup_enabled: false }); display.bottom_messages_enabled = false;
+  expect(resolveFormMessageDisplay()).toEqual({ popup_enabled: true, bottom_messages_enabled: true });
+  expect(resolveFormMessageDisplay({ popup_enabled: false })).toEqual({ popup_enabled: false, bottom_messages_enabled: true });
 });

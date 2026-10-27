@@ -4,7 +4,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { AlertCircle, FileText, X } from "lucide-react";
 import { resolveFormMessages, type FormMessages } from "@/lib/forms/messages";
 
-export default function FormInstructions({ messages, autoOpen = true, triggerLabel }: { messages?: Partial<FormMessages>; autoOpen?: boolean; triggerLabel?: string }) {
+export default function FormInstructions({ messages, enabled = true, autoOpen = true, triggerLabel }: { messages?: Partial<FormMessages>; enabled?: boolean; autoOpen?: boolean; triggerLabel?: string }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const [open, setOpen] = useState(autoOpen);
   const id = useId(), copy = resolveFormMessages(messages);
@@ -13,7 +13,7 @@ export default function FormInstructions({ messages, autoOpen = true, triggerLab
 
   useEffect(() => {
     const dialog = dialogRef.current;
-    if (!dialog) return;
+    if (!enabled || !dialog) return;
     if (!open) {
       if (dialog.open) dialog.close();
       return;
@@ -23,7 +23,9 @@ export default function FormInstructions({ messages, autoOpen = true, triggerLab
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => { document.body.style.overflow = previousOverflow; };
-  }, [open]);
+  }, [open, enabled]);
+
+  if (!enabled) return null;
 
   return (
     <div className="mb-4 flex justify-end">

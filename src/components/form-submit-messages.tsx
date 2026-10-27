@@ -1,6 +1,7 @@
 import { resolveFormMessages, type FormMessages } from "@/lib/forms/messages";
 
-export default function FormSubmitMessages({ messages }: { messages?: Partial<FormMessages> }) {
+export default function FormSubmitMessages({ messages, enabled = true }: { messages?: Partial<FormMessages>; enabled?: boolean }) {
+  if (!enabled) return null;
   const copy = resolveFormMessages(messages);
   return <div className="space-y-1 text-center">
     {copy.submitEnglish && <p className="whitespace-pre-wrap break-words text-[11px] font-semibold text-slate-600">{copy.submitEnglish}</p>}
