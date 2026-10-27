@@ -9,6 +9,7 @@ import type { StaffAccount } from "../security/staff-accounts";
 import type { DocumentUpload } from "../documents/receipts";
 import type { Integrations, OutboxJob, WorkshopBooking, SubmissionReceipt, QueueControl } from "./types";
 import { defaultSettings } from "../settings";
+import type { NotificationTemplateId, SavedEmailTemplate } from "../email/template-catalog";
 
 export interface Campaign {
   id: string;
@@ -296,6 +297,7 @@ export interface CustomForm {
     send_admin_notification: boolean;
     admin_emails: string[];
     admin_subject: string;
+    admin_body_html?: string;
   };
   confirmation_message: string;
   redirect_url?: string;
@@ -325,6 +327,7 @@ export interface FormSubmission {
 
 // Initial In-Memory Database
 export class DatabaseStore {
+  emailTemplates: Partial<Record<NotificationTemplateId, SavedEmailTemplate>> = {};
   candidateAccessAttempts: { key: string; count: number; expires: number }[] = [];
   documentUploads: DocumentUpload[] = [];
   staffAccounts: StaffAccount[] = [];

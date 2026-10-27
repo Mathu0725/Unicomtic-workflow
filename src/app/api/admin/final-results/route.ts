@@ -3,10 +3,10 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/data/store";
 import { queueEmail } from "@/lib/jobs/outbox";
+import { admissionEmailVariables, renderNotification } from "@/lib/email/notification-templates";
 import { decisionSchema, decisionNotifySchema, requireCampaign, requireStudentInCampaign } from "@/lib/validations/admin";
 import { RequestError } from "@/lib/http";
 import { getSession } from "@/lib/security/session";
-import { escaped } from "@/lib/admissions/service";
 
 async function handleGET() {
   const db = getDb();
@@ -90,35 +90,13 @@ async function handlePOST(req: NextRequest) {
         const att = db.attendance.find((a) => a.student_id === dec.student_id);
         if (!student) continue;
 
-        let subject = "";
-        let htmlBody = "";
-
-        if (dec.final_status === "selected") {
-          subject = `Congratulations! Admission Offer for Unicom TIC Intake`;
-          htmlBody = `<p>Dear <strong>${student.full_name}</strong>,</p>
-                      <p>Congratulations! You have been <strong>SELECTED</strong> for admission to Unicom TIC.</p>
-                      <p>Student ID: <strong>${att?.student_exam_id || "Confirmed"}</strong></p>
-                      <p>Please check your portal for enrollment deadlines.</p>`;
-        } else if (dec.final_status === "waiting_list") {
-          subject = `Application Update: Waiting List Placement - Unicom TIC`;
-          htmlBody = `<p>Dear <strong>${student.full_name}</strong>,</p>
-                      <p>You have been placed on the <strong>Waiting List</strong> (Rank: ${dec.rank || "N/A"}).</p>
-                      <p>We will contact you immediately if an enrollment seat becomes available.</p>`;
-        } else if (dec.final_status === "unsuccessful") {
-          subject = `Update Regarding Your Application - Unicom TIC`;
-          htmlBody = `<p>Dear <strong>${student.full_name}</strong>,</p>
-                      <p>Thank you for participating in the selection process. Due to cohort capacity limits, we are unable to offer you admission for this intake.</p>
-                      <p>We wish you the very best in your academic journey and welcome you to apply in future intakes.</p>`;
-        }
-
-        if (subject) {
+        if (["selected", "waiting_list", "unsuccessful"].includes(dec.final_status)) {
           const key = `decision:${dec.id}:${dec.final_status}`;
           if (db.outbox.some(j => j.key === key)) continue;
           queueEmail({
             to: student.email,
             toName: student.full_name,
-            subject,
-            html: htmlBody.replace(student.full_name, escaped(student.full_name)),
+            ...renderNotification(db, dec.final_status === "selected" ? "selection_selected" : dec.final_status === "waiting_list" ? "selection_waiting_list" : "selection_unsuccessful", { ...admissionEmailVariables(db, student, db.registrations.find(r => r.student_id === student.id && r.campaign_id === campaignId)), studentId: att?.student_exam_id || "Confirmed", rank: dec.rank || "N/A" }),
             decisionId: dec.id,
           }, key);
 

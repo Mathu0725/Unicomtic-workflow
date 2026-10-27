@@ -1094,6 +1094,7 @@ function onFormSubmit(e) {
       {/* TAB 3: Email Automation Studio */}
       {activeTab === "email" && (
         <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm max-w-2xl text-xs space-y-6">
+          <Link href="/admin/email/templates" className="inline-flex font-semibold text-blue-700">Edit this form's confirmation and staff alert in Email Templates →</Link>
           <div className="flex items-center justify-between pb-3 border-b border-slate-100">
             <div className="flex items-center gap-2">
               <Mail className="w-5 h-5 text-blue-600" />

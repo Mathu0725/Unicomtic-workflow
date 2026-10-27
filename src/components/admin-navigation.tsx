@@ -35,6 +35,7 @@ const navigationItems: NavigationItem[] = [
     id: "communications", name: "Communications", icon: Mail,
     children: [
       { name: "Email Center", href: "/admin/email", icon: Mail },
+      { name: "Email Templates", href: "/admin/email/templates", icon: FileText },
       { name: "Student Reminders", href: "/admin/reminders", icon: Mail },
     ],
   },
@@ -52,6 +53,7 @@ const navigationItems: NavigationItem[] = [
 ];
 
 function matchesRoute(pathname: string, href: string) {
+  if (href === "/admin/email" && pathname.startsWith("/admin/email/templates")) return false;
   if (href === "/admin/settings") return isAdminSettingsRoute(pathname);
   return pathname === href || (href !== "/admin" && pathname.startsWith(`${href}/`));
 }

@@ -3,10 +3,10 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/data/store";
 import { queueEmail } from "@/lib/jobs/outbox";
+import { admissionEmailVariables, renderNotification } from "@/lib/email/notification-templates";
 import { interviewCreateSchema, interviewAssignSchema, requireCampaign, requireStudentInCampaign } from "@/lib/validations/admin";
 import { interviewEvaluationSchema } from "@/lib/validations/interview";
 import { RequestError } from "@/lib/http";
-import { escaped } from "@/lib/admissions/service";
 
 async function handleGET() {
   const db = getDb();
@@ -90,12 +90,7 @@ async function handlePOST(req: NextRequest) {
             queueEmail({
               to: student.email,
               toName: student.full_name,
-              subject: `Interview Invitation - Unicom TIC Admissions [${intv.title}]`,
-              html: `<p>Dear <strong>${escaped(student.full_name)}</strong>,</p>
-                     <p>You are invited for the Unicom TIC Admissions Interview.</p>
-                     <p><strong>Session:</strong> ${escaped(intv.title)}<br>
-                     <strong>Venue:</strong> ${escaped(intv.venue)}<br>
-                     <strong>Date & Time:</strong> ${slot}</p>`,
+              ...renderNotification(db, "interview_invitation", { ...admissionEmailVariables(db, student, db.registrations.find(r => r.student_id === student.id && r.campaign_id === intv.campaign_id)), interview: intv.title, venue: intv.venue, date: new Date(slot).toLocaleString("en-GB", { timeZone: "Asia/Colombo" }) }),
             }, `interview:${candidateId}`);
           }
         }

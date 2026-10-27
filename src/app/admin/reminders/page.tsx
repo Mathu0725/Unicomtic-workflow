@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { ArrowRight, BellRing, Check, CheckCircle2, Eye, Mail, RefreshCw, Search, Users } from "lucide-react";
 import { useLiveData, inputClass, buttonClass, panelClass, Notice } from "@/components/live-data";
@@ -24,6 +24,12 @@ export default function RemindersPage() {
     const [failure, setFailure] = useState("");
     const [drafts, setDrafts] = useState(() => Object.fromEntries(reminderKinds.map(value => [value, { subject: reminderCopy[value].subject, body: reminderCopy[value].body, actionUrl: "" }])) as Record<ReminderKind, { subject: string; body: string; actionUrl: string }>);
     const { data, error, reload, loading } = useLiveData(`/api/admin/reminders?kind=${kind}&campaignId=${encodeURIComponent(campaignId)}`, 0);
+    const templatesLoaded = useRef(false), draftsEdited = useRef(false);
+    useEffect(() => {
+        if (!data?.templates || templatesLoaded.current) return;
+        templatesLoaded.current = true;
+        if (!draftsEdited.current) setDrafts(current => Object.fromEntries(reminderKinds.map(id => [id, { ...current[id], subject: data.templates[id].subject, body: data.templates[id].body }])) as typeof current);
+    }, [data?.templates]);
     useEffect(() => { setSelected([]); setPreviewId(""); setPreviewOpen(false); setPage(0); }, [kind, campaignId, data?.expiresAt]);
     useEffect(() => { setPage(0); }, [search]);
     const recipients: Recipient[] = data?.recipients || [];
@@ -38,7 +44,7 @@ export default function RemindersPage() {
         setPreviewId(id);
         setPreviewOpen(true);
     };
-    const updateDraft = (field: "subject" | "body" | "actionUrl", value: string) => setDrafts(current => ({ ...current, [kind]: { ...current[kind], [field]: value } }));
+    const updateDraft = (field: "subject" | "body" | "actionUrl", value: string) => { draftsEdited.current = true; setDrafts(current => ({ ...current, [kind]: { ...current[kind], [field]: value } })); };
     const queue = async () => {
         if (!data || !chosen.length || busy) return;
         setBusy(true); setFailure(""); setMessage("");
@@ -57,6 +63,7 @@ export default function RemindersPage() {
                 <Link href="/admin/email" className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:border-blue-300"><Mail className="h-4 w-4" />Email delivery activity<ArrowRight className="h-4 w-4" /></Link>
             </div>
             <Notice error>{failure || error}</Notice><Notice>{message}</Notice>
+            <p className="text-sm text-slate-500">Starting messages use your saved templates. <Link href="/admin/email/templates" className="font-semibold text-blue-700">Edit reminder templates</Link></p>
             <section aria-labelledby="missing-step-heading" className="space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                     <h2 id="missing-step-heading" className="flex items-center gap-2 text-sm font-bold text-slate-900"><span className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-900 text-xs text-white">1</span>Filter by missing step</h2>

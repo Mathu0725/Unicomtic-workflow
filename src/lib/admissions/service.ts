@@ -8,6 +8,7 @@ import { renderEmailTemplate } from "../email/template-engine";
 import { formSheetTarget } from "../google/sheet-target";
 import { documentAnswer, documentUrl, type DocumentUpload } from "../documents/receipts";
 import { emailValidationMessage } from "../validations/email";
+import { admissionEmailVariables, renderNotification, savedTemplate } from "../email/notification-templates";
 export const escaped = (value: any) => String(value ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
 export const normalizeEmail = (value: any) => String(value || "").trim().toLowerCase();
 export const normalizeNic = (value: any) => String(value || "").replace(/\s/g, "").toUpperCase();
@@ -90,7 +91,7 @@ export function bookWorkshop(workshopId: string | undefined, student: Student, r
     const booking = { id: randomUUID(), workshop_id: workshopId, student_id: student.id, registration_id: reg.id, status: "confirmed" as const, created_at: now() };
     db.workshopBookings.push(booking);
     const when = new Date(workshop.start_time).toLocaleString("en-GB", { timeZone: "Asia/Colombo" });
-    enqueue(db, "email", `booking:${booking.id}`, { to: student.email, toName: student.full_name, subject: `Workshop booking confirmed — ${workshop.title}`, html: `<p>Dear ${escaped(student.full_name)},</p><p>Your workshop seat is confirmed.</p><p>${escaped(workshop.title)}<br>${escaped(when)} (Sri Lanka)<br>${escaped(workshop.venue)}<br>${escaped(workshop.address)}</p><p>Reference: ${escaped(reg.reference_no)}. Bring your NIC.</p>${workshop.google_maps_url ? `<p><a href="${escaped(workshop.google_maps_url)}">Location</a></p>` : ""}` });
+    enqueue(db, "email", `booking:${booking.id}`, { to: student.email, toName: student.full_name, ...renderNotification(db, "workshop_booking", { ...admissionEmailVariables(db, student, reg), workshop: workshop.title, date: when, venue: workshop.venue, address: workshop.address }, workshop.google_maps_url || undefined) });
     return booking;
 }
 export function submissionSheetRow(student: Student, reg: Registration, app?: Application, sub?: FormSubmission) {
@@ -99,26 +100,31 @@ export function submissionSheetRow(student: Student, reg: Registration, app?: Ap
 export function notifySubmission(student: Student, reg: Registration, app?: Application, sub?: FormSubmission, form?: CustomForm) {
     const db = getDb(), ref = sub?.reference_no || app?.application_no || reg.reference_no;
     const trackingUrl = `${(process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").replace(/\/$/, "")}/status?ref=${encodeURIComponent(reg.reference_no)}`;
-    let subject = `${app ? "Application received" : "Registration confirmed"} — ${ref}`;
-    let html = `<p>Dear ${escaped(student.full_name)},</p><p>Your ${app ? "application" : "registration"} has been received. Reference: <strong>${escaped(ref)}</strong>.</p>`;
+    const vars = { ...(sub?.data || {}), ...admissionEmailVariables(db, student, reg), reference: ref, reference_no: ref, fullName: student.full_name, student_name: student.full_name, title: form?.title || "", formTitle: form?.title || (app ? "Application" : "Registration"), district: student.district, submission_date: now().slice(0, 10), submissionType: app ? "application" : "registration", applicationCount: db.applications.length, registrationCount: db.registrations.length };
+    const templateId = form && !["registration", "application"].includes(form.type) ? "form_confirmation" : app ? "application_confirmation" : "registration_confirmation";
+    const receipt = renderNotification(db, templateId, vars, trackingUrl);
+    let { subject, html } = receipt;
     if (form?.email_automation.enabled) {
-        const vars = { ...(sub?.data || {}), reference_no: ref, fullName: student.full_name, student_name: student.full_name, title: form.title, district: student.district, submission_date: now().slice(0, 10) };
-        const rendered = renderEmailTemplate(form.email_automation.applicant_subject, form.email_automation.applicant_body_html, null, Object.fromEntries(Object.entries(vars).map(([k, v]) => [k, escaped(v)])));
+        const rendered = renderEmailTemplate(form.email_automation.applicant_subject, form.email_automation.applicant_body_html, null, vars);
         if (rendered.isValid) {
             subject = rendered.subject;
-            html = rendered.bodyHtml;
+            html = rendered.bodyHtml + `<p><a href="${escaped(trackingUrl)}">${escaped(savedTemplate(db, templateId).actionLabel || "Track your admission progress")}</a></p>`;
         }
     }
-    html += `<p><a href="${trackingUrl}">Track your admission progress</a></p>`;
     if (!app && reg.status === "invited")
-        html += `<p><a href="${escaped((process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000") + "/apply?ref=" + reg.reference_no)}">Complete your application</a></p>`;
+        html += `<p><a href="${escaped((process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000") + "/apply?ref=" + reg.reference_no)}">${escaped(savedTemplate(db, "application_invitation").actionLabel || "Complete your application")}</a></p>`;
     const candidateContext = { stage: app ? "application" : "registration", recordId: app?.id || reg.id, registrationId: reg.id, applicationId: app?.id, studentId: student.id, reference: ref };
     if (!form || (form.email_automation.enabled && form.email_automation.send_applicant_email))
-        enqueue(db, "email", `submission:${sub?.id || app?.id || reg.id}:applicant`, { to: student.email, toName: student.full_name, subject, html, sourceId: sub?.id, candidateContext });
+        enqueue(db, "email", `submission:${sub?.id || app?.id || reg.id}:applicant`, { to: student.email, toName: student.full_name, subject, html, templateId: form?.email_automation.enabled ? `form:${form.id}:applicant` : templateId, sourceId: sub?.id, candidateContext });
     const recipients = new Set([db.integrations.admin_notification_email || db.integrations.google?.email, ...(form?.email_automation.enabled && form.email_automation.send_admin_notification ? form.email_automation.admin_emails : [])].filter(Boolean));
+    let adminMessage = renderNotification(db, "admin_submission", vars);
+    if (form?.email_automation.enabled && form.email_automation.send_admin_notification) {
+        const rendered = renderEmailTemplate(form.email_automation.admin_subject || adminMessage.subject, form.email_automation.admin_body_html || adminMessage.html, null, vars);
+        if (rendered.isValid) adminMessage = { ...adminMessage, subject: rendered.subject, html: rendered.bodyHtml };
+    }
     for (const email of recipients)
         if (email)
-            enqueue(db, "email", `submission:${sub?.id || app?.id || reg.id}:admin:${email}`, { to: email, subject: `New ${app ? "application" : "registration"} — ${student.full_name} [${ref}]`, html: `<p>${escaped(student.full_name)} (${escaped(student.email)}) submitted ${escaped(ref)}.</p><p>Total applications: ${db.applications.length}. Total registrations: ${db.registrations.length}.</p>`, candidateContext });
+            enqueue(db, "email", `submission:${sub?.id || app?.id || reg.id}:admin:${email}`, { to: email, ...adminMessage, text: undefined, candidateContext });
     const row = submissionSheetRow(student, reg, app, sub);
     const target = formSheetTarget(db.integrations, form, app ? "applications" : "registrations");
     if (target?.auto_sync)

@@ -5,6 +5,7 @@ import { getDb } from "@/lib/data/store";
 import { accessBucket } from "@/lib/security/candidate-access";
 import { candidateEmailSchema } from "@/lib/validations/email";
 import { enqueue } from "@/lib/jobs/outbox";
+import { admissionEmailVariables, renderNotification, savedTemplate } from "@/lib/email/notification-templates";
 export const dynamic = "force-dynamic";
 const schema = z.object({ reference: z.string().trim().min(4).max(100).transform(value => value.toUpperCase()), email: candidateEmailSchema, purpose: z.enum(["status", "apply"]), formSlug: z.string().max(100).optional() }).strict();
 const generic = "If these details match a registration, a secure link will be emailed to the registered address. Check your inbox and spam folder. Delivery may wait for the sending allowance.";
@@ -22,7 +23,8 @@ export const POST = route(async req => {
     const destination = form ? `/form/${form.slug}` : undefined;
     const key = `candidate-access:${registration.id}:${purpose}:${form?.id || "legacy"}:${Math.floor(Date.now() / 60000)}`;
     if (!db.outbox.some(job => job.payload.candidateAccess?.registrationId === registration.id && job.payload.to === student.email && ["queued", "sending", "blocked"].includes(job.status))) enqueue(db, "email", key, {
-      to: student.email, toName: student.full_name, subject: "Your secure Unicom TIC access link", html: "Access link is generated securely when this email is dispatched.",
+      to: student.email, toName: student.full_name, ...renderNotification(db, "candidate_access", { ...admissionEmailVariables(db, student, registration), purpose: purpose === "apply" ? "complete your application" : "view your admissions progress" }),
+      accessTemplate: savedTemplate(db, "candidate_access"),
       candidateAccess: { registrationId: registration.id, purpose, destination },
       candidateContext: { stage: "registration", recordId: registration.id, registrationId: registration.id, studentId: student.id },
     });
