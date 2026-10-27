@@ -2,6 +2,9 @@
 import { apiResponse } from "@/lib/client/api";
 import { Notice as RequestNotice } from "@/components/live-data";
 import { formSlugProblem } from "@/lib/forms/public-links";
+import { defaultFormMessages, formMessageFields, resolveFormMessages } from "@/lib/forms/messages";
+import FormInstructions from "@/components/form-instructions";
+import FormSubmitMessages from "@/components/form-submit-messages";
 
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
@@ -47,7 +50,7 @@ export default function FormBuilderPage() {
   const [savedSlug, setSavedSlug] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [activeTab, setActiveTab] = useState<"fields" | "sheets" | "email" | "workshops">("fields");
+  const [activeTab, setActiveTab] = useState<"fields" | "sheets" | "email" | "workshops" | "messages">("fields");
   const [workshops, setWorkshops] = useState<any[]>([]);
   const [banner, setBanner] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const [copiedLink, setCopiedLink] = useState(false);
@@ -100,7 +103,7 @@ export default function FormBuilderPage() {
       .then((res) => res.json())
       .then((data) => {
         if (data.form) {
-          setForm(data.form);
+          setForm({ ...data.form, messages: resolveFormMessages(data.form.messages) });
           setSavedSlug(data.form.slug);
         }
       })
@@ -213,6 +216,9 @@ export default function FormBuilderPage() {
     const slug = form.slug.trim().toLowerCase();
     const linkProblem = formSlugProblem(slug);
     if (linkProblem) { setBanner({ type: "error", message: linkProblem }); return; }
+    const messages = resolveFormMessages(form.messages);
+    const invalidMessage = formMessageFields.find(field => (field.required && !messages[field.key].trim()) || messages[field.key].length > field.maxLength);
+    if (invalidMessage) { setBanner({ type: "error", message: `Check ${invalidMessage.label}: enter valid text within ${invalidMessage.maxLength} characters.` }); return; }
     setSaving(true);
     setBanner(null);
 
@@ -233,12 +239,13 @@ export default function FormBuilderPage() {
           workshop_config: form.workshop_config,
           email_automation: form.email_automation,
           confirmation_message: form.confirmation_message,
+          messages,
         }),
       });
 
       const data = await res.json();
       if (data.success) {
-        setForm(data.form);
+        setForm({ ...data.form, messages: resolveFormMessages(data.form.messages) });
         setSavedSlug(data.form.slug);
         setCopiedLink(false);
         setBanner({ type: "success", message: data.message });
@@ -276,6 +283,7 @@ export default function FormBuilderPage() {
     );
   }
 
+  const messages = resolveFormMessages(form.messages);
   return (
     <div className="space-y-6">
       <RequestNotice error>{pageError}</RequestNotice>
@@ -420,7 +428,17 @@ export default function FormBuilderPage() {
       </div>
 
       {/* TAB 1: Visual Fields Designer */}
-      <button onClick={() => setActiveTab("workshops")} className="rounded-lg border border-blue-200 px-4 py-2 text-sm font-semibold text-blue-700">4. Workshop choices</button>
+      <div className="flex flex-wrap gap-2">
+        <button onClick={() => setActiveTab("workshops")} className="rounded-lg border border-blue-200 px-4 py-2 text-sm font-semibold text-blue-700">4. Workshop choices</button>
+        <button onClick={() => setActiveTab("messages")} className={`rounded-lg border px-4 py-2 text-sm font-semibold ${activeTab === "messages" ? "border-blue-600 bg-blue-600 text-white" : "border-blue-200 text-blue-700"}`}>5. Messages & popup</button>
+      </div>
+      {activeTab === "messages" && <section aria-labelledby="form-messages-heading" className="space-y-5 rounded-2xl border border-slate-200 bg-white p-6">
+        <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 id="form-messages-heading" className="text-lg font-bold">Form messages & popup</h2><p className="mt-1 max-w-2xl text-sm text-slate-500">Set instructions and draft messages for this form in English or Tamil. Submit instructions appear in both the popup and below the submit button. Choose Save Form to apply your changes.</p></div><FormInstructions messages={messages} autoOpen={false} triggerLabel="Preview popup" /></div>
+        <p className="text-xs text-slate-500">Use plain text. Optional messages can be left empty to hide them. Draft saving and restoring continue to work with your edited text.</p>
+        <div className="grid gap-5 md:grid-cols-2">{formMessageFields.map(field => <label key={field.key} className={`block text-sm font-semibold text-slate-700 ${field.key === "popupNotes" ? "md:col-span-2" : ""}`}><span>{field.label}{field.required ? " *" : ""}</span>{field.rows ? <textarea rows={field.rows} required={field.required} maxLength={field.maxLength} disabled={saving} value={messages[field.key]} onChange={event => setForm({ ...form, messages: { ...messages, [field.key]: event.target.value } })} className="mt-1 w-full resize-y rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-normal leading-relaxed outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:opacity-60" /> : <input type="text" required={field.required} maxLength={field.maxLength} disabled={saving} value={messages[field.key]} onChange={event => setForm({ ...form, messages: { ...messages, [field.key]: event.target.value } })} className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-normal outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:opacity-60" />}{field.hint && <span className="mt-1 block text-xs font-normal text-slate-500">{field.hint}</span>}</label>)}</div>
+        <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-5 text-center"><h3 className="text-xs font-bold uppercase text-slate-400">Below-button preview</h3><div className="rounded-xl bg-[#4d4d4d] px-4 py-3 text-sm font-bold text-white">{messages.submitButtonLabel}</div><FormSubmitMessages messages={messages} /></div>
+        <button type="button" disabled={saving} onClick={() => { setForm({ ...form, messages: { ...defaultFormMessages } }); setBanner({ type: "success", message: "Default messages loaded into the editor. Choose Save Form to apply them." }); }} className="text-sm font-semibold text-blue-700 disabled:opacity-60">Load default messages</button>
+      </section>}
       {activeTab === "workshops" && <section className="bg-white rounded-2xl border border-slate-200 p-6 space-y-4">
         <h3 className="text-lg font-bold">Let applicants select a workshop</h3>
         <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.workshop_config?.enabled || false} onChange={e => setForm({ ...form, workshop_config: { required: false, workshop_ids: [], ...form.workshop_config, enabled: e.target.checked } })} />Enable workshop booking in this form</label>

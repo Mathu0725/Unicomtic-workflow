@@ -1,11 +1,14 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { AlertCircle, FileText, X } from "lucide-react";
+import { resolveFormMessages, type FormMessages } from "@/lib/forms/messages";
 
-export default function FormInstructions() {
+export default function FormInstructions({ messages, autoOpen = true, triggerLabel }: { messages?: Partial<FormMessages>; autoOpen?: boolean; triggerLabel?: string }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(autoOpen);
+  const id = useId(), copy = resolveFormMessages(messages);
+  const notes = copy.popupNotes.split(/\n\s*\n/).filter(note => note.trim());
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -29,13 +32,13 @@ export default function FormInstructions() {
         className="inline-flex items-center gap-1.5 rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs font-semibold text-neutral-700 hover:bg-neutral-50"
       >
         <FileText className="h-3.5 w-3.5" aria-hidden="true" />
-        View instructions
+        {triggerLabel || copy.viewInstructionsLabel}
       </button>
 
       <dialog
         ref={dialogRef}
-        aria-labelledby="form-instructions-title"
-        aria-describedby="form-instructions-content"
+        aria-labelledby={`${id}-title`}
+        aria-describedby={`${id}-content`}
         onClose={() => setOpen(false)}
         className="m-auto max-h-[90dvh] w-[92vw] max-w-lg overflow-y-auto rounded-2xl border-0 bg-white p-0 text-slate-900 shadow-2xl backdrop:bg-slate-950/60"
       >
@@ -45,8 +48,8 @@ export default function FormInstructions() {
               <AlertCircle className="h-5 w-5" aria-hidden="true" />
             </span>
             <div>
-              <h2 id="form-instructions-title" className="text-lg font-bold">Before you begin</h2>
-              <p lang="ta" className="mt-1 text-xs text-slate-500">விண்ணப்ப வழிமுறைகள்</p>
+              <h2 id={`${id}-title`} className="break-words text-lg font-bold">{copy.popupTitle}</h2>
+              {copy.popupSubtitle && <p lang="ta" className="mt-1 whitespace-pre-wrap break-words text-xs text-slate-500">{copy.popupSubtitle}</p>}
             </div>
           </div>
           <button
@@ -59,21 +62,14 @@ export default function FormInstructions() {
           </button>
         </div>
 
-        <div id="form-instructions-content" className="space-y-5 p-5 text-sm leading-relaxed sm:p-6">
-          <div className="space-y-2 rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-950">
-            <p className="font-bold">Press apply at the bottom of the page to complete the application.</p>
-            <p lang="ta" className="text-xs font-semibold leading-relaxed">
-              விண்ணப்பத்தை பூர்த்தி செய்ய இப்பக்கத்தின் கீழே உள்ள <strong>apply</strong> என்பதை அழுத்தவும்.
-            </p>
-          </div>
-          <ul className="list-disc space-y-3 pl-5 text-slate-700 marker:text-neutral-600">
-            <li className="font-semibold">Please use your OWN initiative and words to complete the application.</li>
-            <li>
-              Can be completed in either English or Tamil
-              <span lang="ta" className="mt-1 block text-xs font-semibold leading-relaxed">விண்ணப்பத்தை ஆங்கிலத்தில் அல்லது தமிழில் நிரப்பலாம்</span>
-            </li>
-            <li className="font-semibold">Complete the application as soon as possible as spaces on the workshops are limited.</li>
-          </ul>
+        <div id={`${id}-content`} className="space-y-5 p-5 text-sm leading-relaxed sm:p-6">
+          {(copy.submitEnglish || copy.submitTamil) && <div className="space-y-2 rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-950">
+            {copy.submitEnglish && <p className="whitespace-pre-wrap break-words font-bold">{copy.submitEnglish}</p>}
+            {copy.submitTamil && <p lang="ta" className="whitespace-pre-wrap break-words text-xs font-semibold leading-relaxed">{copy.submitTamil}</p>}
+          </div>}
+          {notes.length > 0 && <ul className="list-disc space-y-3 pl-5 text-slate-700 marker:text-neutral-600">
+            {notes.map((note, index) => <li key={index} className="whitespace-pre-wrap break-words font-semibold">{note}</li>)}
+          </ul>}
         </div>
 
         <div className="border-t border-slate-100 p-5 sm:px-6">
@@ -82,7 +78,7 @@ export default function FormInstructions() {
             onClick={() => setOpen(false)}
             className="w-full rounded-xl bg-[#4d4d4d] px-4 py-3 text-sm font-bold text-white hover:bg-[#333333] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-600"
           >
-            Continue / <span lang="ta">தொடரவும்</span>
+            {copy.continueButtonLabel}
           </button>
         </div>
       </dialog>
