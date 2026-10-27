@@ -24,6 +24,8 @@ export function enqueue(db: DatabaseStore, type: OutboxJob["type"], key: string,
 export function queueEmail(payload: SendEmailPayload & {
     sourceId?: string;
     decisionId?: string;
+    templateId?: string;
+    templateVersion?: number;
 }, key?: string) {
     return enqueue(getDb(), "email", key || `mail:${payload.to}:${payload.subject}`, payload);
 }

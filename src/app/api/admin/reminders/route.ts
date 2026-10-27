@@ -6,6 +6,7 @@ import { getSession } from "@/lib/security/session";
 import { reminderCohorts, reminderDeliveryState } from "@/lib/reminders/eligibility";
 import { reminderToken, queueReminders, reminderActionUrl } from "@/lib/reminders/service";
 import { reminderKinds, hasUnknownReminderVariable } from "@/lib/reminders/templates";
+import { savedTemplate } from "@/lib/email/notification-templates";
 export const dynamic = "force-dynamic";
 const kindSchema = z.enum(reminderKinds);
 const template = (max: number) => z.string().trim().min(1).max(max).refine(value => !hasUnknownReminderVariable(value), "Use only the supported message variables.");
@@ -27,6 +28,7 @@ export const GET = route(async req => {
         counts: Object.fromEntries(reminderKinds.map(value => [value, cohorts.candidates.filter(c => c.kind === value).length])),
         campaigns: db.campaigns.filter(c => c.is_active).map(c => ({ id: c.id, title: c.title })),
         workerStale: now - lastSeen > 120000, sender: db.integrations.email_provider,
+        templates: Object.fromEntries(reminderKinds.map(id => [id, savedTemplate(db, id)])),
     });
 }, true);
 export const POST = route(async req => {

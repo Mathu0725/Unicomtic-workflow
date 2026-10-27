@@ -7,6 +7,7 @@ import SubmissionRecovery from "./submission-recovery";
 import { pendingPayload, submitRequest } from "@/lib/client/submit";
 import { readJson, responseError } from "@/lib/client/api";
 import type { CandidateStage, EmailCandidate } from "@/lib/email/candidates";
+import { personalizeTemplate } from "@/lib/email/template-catalog";
 
 const endpoint = "/api/admin/email/candidates";
 export default function CandidateEmailComposer({ onQueued }: { onQueued: () => Promise<void> }) {
@@ -70,6 +71,7 @@ export default function CandidateEmailComposer({ onQueued }: { onQueued: () => P
         {directory.data && <div className="flex items-center justify-between text-xs text-slate-500"><span>{directory.data.total} candidates · Page {page}</span><span className="flex gap-3"><button type="button" disabled={page <= 1} onClick={() => setPage(page - 1)} className="text-blue-700 disabled:text-slate-300">Previous</button><button type="button" disabled={page * directory.data.pageSize >= directory.data.total} onClick={() => setPage(page + 1)} className="text-blue-700 disabled:text-slate-300">Next</button></span></div>}
       </div>
       {selected ? <form onSubmit={send} className="space-y-3">
+        <button type="button" disabled={busy || unresolved || !directory.data?.messageTemplate} className="text-sm font-semibold text-blue-700 disabled:opacity-50" onClick={() => { const template = directory.data.messageTemplate, values = { name: selected.name, email: selected.email, reference: selected.reference, intake: directory.data.intakeTitles?.[selected.id] || "Unicom TIC" }; setSubject(personalizeTemplate(template.subject, values)); setBody(personalizeTemplate(template.body, values)); }}>Use saved message template</button>
         <div className="flex items-start justify-between gap-3 rounded-xl bg-slate-50 p-3"><div className="min-w-0"><p className="flex items-center gap-2 text-xs font-semibold text-slate-500"><Mail className="h-3.5 w-3.5" />To · {selected.reference}</p><p className="mt-1 text-sm font-semibold">{selected.name}</p><p className="break-all text-xs text-slate-500">{selected.email}</p></div><button type="button" aria-label="Clear selected candidate" disabled={busy || unresolved} onClick={() => { setSelected(null); setInitialId(""); }} className="p-1 text-slate-400"><X className="h-4 w-4" /></button></div>
         <label className="block text-xs font-semibold">Email subject<input required maxLength={250} className={`${inputClass} mt-1`} value={subject} disabled={busy || unresolved} onChange={event => setSubject(event.target.value)} /></label>
         <label className="block text-xs font-semibold">Message<textarea required maxLength={10000} rows={6} className={`${inputClass} mt-1 resize-y`} placeholder="Write your message in English or Tamil…" value={body} disabled={busy || unresolved} onChange={event => setBody(event.target.value)} /></label>

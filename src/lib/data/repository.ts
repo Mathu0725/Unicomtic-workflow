@@ -45,7 +45,7 @@ function hydrate(data: DatabaseStore): DatabaseStore {
         throw new AppError("STORAGE_CORRUPT", "Admissions records need administrator attention. No data was reset.", 500, {}, false, "contact_admissions");
     const defaults = initialDatabase();
     const migratedArrays = new Set(["outbox", "workshopBookings", "submissionReceipts", "policyVersions", "staffAccounts", "documentUploads", "candidateAccessAttempts"]);
-    if (Object.keys(defaults).some(key => Array.isArray((defaults as any)[key]) && (!migratedArrays.has(key) || key in data) && !Array.isArray((data as any)[key])) || data.settings && (typeof data.settings.termsContent !== "string" || !Number.isSafeInteger(data.settings.version)))
+    if (Object.keys(defaults).some(key => Array.isArray((defaults as any)[key]) && (!migratedArrays.has(key) || key in data) && !Array.isArray((data as any)[key])) || data.settings && (typeof data.settings.termsContent !== "string" || !Number.isSafeInteger(data.settings.version)) || data.emailTemplates && (typeof data.emailTemplates !== "object" || Array.isArray(data.emailTemplates)))
         throw new AppError("STORAGE_CORRUPT", "Admissions records need administrator attention. No data was reset.", 500, {}, false, "contact_admissions");
     return Object.assign(defaults, data, {
         settings: data.settings || defaults.settings,

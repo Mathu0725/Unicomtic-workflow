@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { transaction } from "../data/repository";
 import { enqueue, processOutbox } from "./outbox";
-import { escaped } from "../admissions/service";
+import { admissionEmailVariables, renderNotification } from "../email/notification-templates";
 import { AppError } from "../errors/app-error";
 import { recordEvent } from "../observability/logger";
 
@@ -20,8 +20,7 @@ export async function runScheduledQueue() {
                 for (const booking of db.workshopBookings.filter(b => b.workshop_id === workshop.id && b.status === "confirmed")) {
                     const student = db.students.find(s => s.id === booking.student_id);
                     if (student) enqueue(db, "email", `reminder:${booking.id}:${days}:${workshop.start_time}`, {
-                        to: student.email, subject: `Workshop reminder — ${workshop.title}`,
-                        html: `<p>Dear ${escaped(student.full_name)}, your workshop is scheduled for ${escaped(new Date(workshop.start_time).toLocaleString("en-GB", { timeZone: "Asia/Colombo" }))} (Sri Lanka), ${escaped(workshop.venue)}.</p><p>${escaped(workshop.address)}</p>`,
+                        to: student.email, ...renderNotification(db, "workshop_reminder", { ...admissionEmailVariables(db, student, db.registrations.find(r => r.id === booking.registration_id)), workshop: workshop.title, date: new Date(workshop.start_time).toLocaleString("en-GB", { timeZone: "Asia/Colombo" }), venue: workshop.venue, address: workshop.address, daysBefore: days }, workshop.google_maps_url || undefined),
                     });
                 }
             }

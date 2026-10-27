@@ -4,6 +4,7 @@ import type { DatabaseStore, Registration, Student } from "../data/store";
 import { appSecret, decrypt, encrypt } from "./secrets";
 import { AppError } from "../errors/app-error";
 import { ProviderError } from "../errors/provider-error";
+import { admissionEmailVariables, renderNotification } from "../email/notification-templates";
 
 export const CANDIDATE_COOKIE = "unicom_candidate_access";
 export const LINK_LIFETIME = 30 * 60000;
@@ -53,10 +54,12 @@ export function secureCandidateEmail(db: DatabaseStore, payload: Record<string, 
     if (!registration || !student || student.email.trim().toLowerCase() !== String(payload.to).trim().toLowerCase()) throw new ProviderError("CANDIDATE_CONTACT_CHANGED", "Candidate contact changed. Request a new access link.", "permanent");
     const purpose = payload.candidateAccess.purpose === "apply" ? "apply" : "status";
     const url = candidateLink(registration, student, purpose, payload.candidateAccess.destination);
-    return { ...payload, html: `<p>Use this private link to ${purpose === "apply" ? "complete your application" : "view your admissions progress"}:</p><p><a href="${url}">Continue securely</a></p><p>The link expires in 30 minutes. If you did not request it, ignore this email.</p>`, text: `Continue securely: ${url}\nThis link expires in 30 minutes.` };
+    const message = renderNotification(db, "candidate_access", { ...admissionEmailVariables(db, student, registration), purpose: purpose === "apply" ? "complete your application" : "view your admissions progress" }, url, payload.accessTemplate);
+    return { ...payload, ...message, html: message.html + "<p>The link expires in 30 minutes. If you did not request it, ignore this email.</p>", text: message.text + "\nThe link expires in 30 minutes. If you did not request it, ignore this email." };
   }
   if (typeof payload.html !== "string") return payload;
   const origin = new URL(process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").origin;
+  const replacements = new Map<string, string>();
   const html = payload.html.replace(/href=(["'])([^"']+)\1/g, (attribute: string, quote: string, href: string) => {
     try {
       const url = new URL(href.replaceAll("&amp;", "&"), origin);
@@ -65,8 +68,12 @@ export function secureCandidateEmail(db: DatabaseStore, payload: Record<string, 
       const registration = db.registrations.find(registration => registration.reference_no === reference && registration.status !== "cancelled");
       const student = registration && db.students.find(student => student.id === registration.student_id);
       if (!registration || !student || student.email.trim().toLowerCase() !== String(payload.to).trim().toLowerCase()) return attribute;
-      return `href=${quote}${candidateLink(registration, student, url.pathname === "/apply" ? "apply" : "status")}${quote}`;
+      const secure = candidateLink(registration, student, url.pathname === "/apply" ? "apply" : "status");
+      replacements.set(url.href, secure);
+      return `href=${quote}${secure}${quote}`;
     } catch { return attribute; }
   });
-  return { ...payload, html };
+  let text = payload.text;
+  if (typeof text === "string") for (const [original, secure] of replacements) text = text.replaceAll(original, secure);
+  return { ...payload, html, text };
 }

@@ -7,6 +7,7 @@ import { emailCandidates } from "@/lib/email/candidates";
 import { enqueue } from "@/lib/jobs/outbox";
 import { getSession } from "@/lib/security/session";
 import { candidateEmailSchema } from "@/lib/validations/email";
+import { savedTemplate } from "@/lib/email/notification-templates";
 export const dynamic = "force-dynamic";
 
 export const GET = route(async req => {
@@ -18,7 +19,8 @@ export const GET = route(async req => {
     && (!params.get("status") || candidate.status === params.get("status"))
     && (!search || [candidate.name, candidate.email, candidate.reference, candidate.registrationReference].some(value => value.toLowerCase().includes(search))));
   const page = Math.max(1, Math.min(100000, Number(params.get("page")) || 1)), pageSize = 20;
-  return NextResponse.json({ success: true, candidates: filtered.slice((page - 1) * pageSize, page * pageSize), total: filtered.length, page, pageSize, statuses });
+  const pageCandidates = filtered.slice((page - 1) * pageSize, page * pageSize), db = getDb();
+  return NextResponse.json({ success: true, candidates: pageCandidates, total: filtered.length, page, pageSize, statuses, messageTemplate: savedTemplate(db, "candidate_message"), intakeTitles: Object.fromEntries(pageCandidates.map(candidate => [candidate.id, db.campaigns.find(campaign => campaign.id === db.registrations.find(registration => registration.id === candidate.registrationId)?.campaign_id)?.title || "Unicom TIC"])) });
 }, true);
 
 const messageSchema = z.object({ stage: z.enum(["registration", "application"]), recordId: z.string().min(1).max(200), expectedEmail: candidateEmailSchema, subject: z.string().trim().min(1).max(250).refine(value => !/[\r\n]/.test(value), "Subject must be one line."), body: z.string().trim().min(1).max(10000), clientAttemptId: z.string().uuid() }).strict();

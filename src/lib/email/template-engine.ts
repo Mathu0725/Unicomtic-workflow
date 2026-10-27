@@ -1,6 +1,6 @@
 /**
  * Email Template Engine
- * Handles safe variable replacement, HTML sanitization, and missing variable validation.
+ * Escapes HTML variable values and reports missing template variables.
  */
 
 export interface RenderResult {
@@ -11,12 +11,8 @@ export interface RenderResult {
   isValid: boolean;
 }
 
-export function extractTemplateVariables(content: string): string[] {
-  const matches = content.match(/\{\{([a-zA-Z0-9_]+)\}\}/g);
-  if (!matches) return [];
-  const vars = matches.map((m) => m.replace(/\{\{|\}\}/g, "").trim());
-  return Array.from(new Set(vars));
-}
+import { escapeEmailHtml, personalizeTemplate, templateVariables } from "./template-catalog";
+export const extractTemplateVariables = templateVariables;
 
 export function renderEmailTemplate(
   subjectTemplate: string,
@@ -34,17 +30,9 @@ export function renderEmailTemplate(
     }
   }
 
-  let renderedSubject = subjectTemplate;
-  let renderedHtml = htmlTemplate;
-  let renderedText = textTemplate || "";
-
-  for (const [key, val] of Object.entries(variables)) {
-    const safeVal = val !== undefined && val !== null ? String(val) : "";
-    const regex = new RegExp(`\\{\\{${key}\\}\\}`, "g");
-    renderedSubject = renderedSubject.replace(regex, safeVal);
-    renderedHtml = renderedHtml.replace(regex, safeVal);
-    renderedText = renderedText.replace(regex, safeVal);
-  }
+  const renderedSubject = personalizeTemplate(subjectTemplate, variables).replace(/[\r\n]+/g, " ");
+  const renderedHtml = personalizeTemplate(htmlTemplate, Object.fromEntries(Object.entries(variables).map(([key, value]) => [key, escapeEmailHtml(value)])));
+  const renderedText = personalizeTemplate(textTemplate || "", variables);
 
   return {
     subject: renderedSubject,

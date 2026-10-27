@@ -8,6 +8,7 @@ import { reminderCohorts, reminderMatches } from "@/lib/reminders/eligibility";
 import { emailBudget } from "@/lib/email/sending-budget";
 import { emailCandidateResolver } from "@/lib/email/candidates";
 import { emailJobStatus } from "@/lib/email/job-status";
+import { renderNotification } from "@/lib/email/notification-templates";
 export const dynamic = "force-dynamic";
 export const GET = route(async req => {
     const db = getDb(), lastSeen = db.queueControl.last_worker_at || 0, budget = emailBudget(db), resolveCandidate = emailCandidateResolver(db), params = req.nextUrl.searchParams;
@@ -28,7 +29,8 @@ export const POST = route(async (req) => {
     if (body.action === "test_email") {
         if (!z.string().email().safeParse(body.to).success)
             throw new RequestError("Enter a valid test recipient.");
-        queueEmail({ to: body.to, subject: "Unicom TIC notification test", html: "<p>Your admissions notification connection is working.</p>" }, `test:${crypto.randomUUID()}`);
+        const db = getDb();
+        queueEmail({ to: body.to, ...renderNotification(db, "test_notification", { institution: db.settings.institutionName || "Unicom TIC" }) }, `test:${crypto.randomUUID()}`);
     }
     else if (body.action === "retry") {
         const job = getDb().outbox.find(j => j.id === body.jobId);

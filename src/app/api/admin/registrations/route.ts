@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/data/store";
 import { queueEmail } from "@/lib/jobs/outbox";
+import { admissionEmailVariables, renderNotification } from "@/lib/email/notification-templates";
 import { idsSchema } from "@/lib/validations/admin";
 import { RequestError } from "@/lib/http";
 import { getSession } from "@/lib/security/session";
@@ -82,10 +83,7 @@ async function handlePOST(req: NextRequest) {
           queueEmail({
             to: student.email,
             toName: student.full_name,
-            subject: `Action Required: Complete Your Unicom TIC Application [${reg.reference_no}]`,
-            html: `<p>Dear <strong>${student.full_name}</strong>,</p>
-                   <p>You have been selected to proceed with your application for Unicom TIC.</p>
-                   <p><a href="${appUrl}">Click here to fill out the formal application form</a></p>`,
+            ...renderNotification(db, "application_invitation", admissionEmailVariables(db, student, reg), appUrl),
           });
         }
       }
