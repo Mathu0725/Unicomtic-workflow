@@ -82,6 +82,40 @@ it("starts a staff-bound connection with Gmail/Sheets scopes and PKCE", async ()
     expect(JSON.parse(decrypt(decodeURIComponent(encrypted)))).toMatchObject({ intent: "connect", staffEmail: staff.email, state: url.searchParams.get("state") });
 });
 
+it.each(["https://www.uticx.com", "https://unicomtic-workflow.vercel.app"])("moves authorization from %s to the callback host before setting cookies", async origin => {
+    vi.stubEnv("NEXT_PUBLIC_APP_URL", "https://uticx.com");
+    const response = await startConnection(new NextRequest(`${origin}/api/auth/google?drive=1&returnTo=https://unexpected.example`, { headers: { cookie: `${SESSION_COOKIE}=${signSession(staff)}` } }), undefined);
+    expect(location(response).href).toBe("https://uticx.com/api/auth/google?drive=1");
+    expect(response.headers.get("set-cookie")).toBeNull();
+    expect(exchange).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
+});
+
+it("requires a fresh staff login on the canonical host instead of sharing alias cookies", async () => {
+    vi.stubEnv("NEXT_PUBLIC_APP_URL", "https://uticx.com");
+    const response = await startConnection(new NextRequest("https://uticx.com/api/auth/google?drive=1"), undefined);
+    expect(location(response).origin).toBe("https://uticx.com");
+    expect(location(response).pathname).toBe("/login");
+    expect(response.headers.get("set-cookie")).toBeNull();
+});
+
+it("starts Google consent on the same canonical origin as its host-only state cookie", async () => {
+    vi.stubEnv("NEXT_PUBLIC_APP_URL", "https://uticx.com");
+    const response = await startConnection(new NextRequest("https://uticx.com/api/auth/google", { headers: { cookie: `${SESSION_COOKIE}=${signSession(staff)}` } }), undefined);
+    expect(location(response).hostname).toBe("accounts.google.com");
+    expect(location(response).searchParams.get("redirect_uri")).toBe("https://uticx.com/api/auth/google/callback");
+    expect(response.headers.get("set-cookie")).toContain("google_oauth_state=");
+    expect(response.headers.get("set-cookie")).not.toMatch(/;\s*domain=/i);
+});
+
+it("rejects a callback missing its host-bound state cookie without replacing the saved connection", async () => {
+    const response = await finishConnection(request("/api/auth/google/callback?state=old-state&code=old-code", staff), undefined);
+    expect(location(response).searchParams.get("error")).toBe("OAUTH_EXPIRED");
+    expect(exchange).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
+    expect((await readDatabase()).integrations.google?.email).toBe("original-owner@example.com");
+});
+
 it("requests only app-specific Drive access when connecting student documents", async () => {
     const response = await startConnection(request("/api/auth/google?drive=1", staff), undefined);
     const scopes = location(response).searchParams.get("scope")!.split(" ");

@@ -7,6 +7,15 @@ import { getSession } from "@/lib/security/session";
 import { AppError } from "@/lib/errors/app-error";
 export const dynamic = "force-dynamic";
 export const GET = route(async (req) => {
+    const config = googleConfig();
+    // OAuth state and staff cookies must be issued on the callback's host.
+    // Starting from a deployment alias otherwise loses the host-only state cookie.
+    const connectionUrl = new URL("/api/auth/google", config.redirectUri);
+    if (process.env.NEXT_PUBLIC_APP_URL && req.nextUrl.origin !== connectionUrl.origin) {
+        if (req.nextUrl.searchParams.get("drive") === "1") connectionUrl.searchParams.set("drive", "1");
+        if (req.nextUrl.searchParams.get("intent") === "login") connectionUrl.searchParams.set("intent", "login");
+        return NextResponse.redirect(connectionUrl);
+    }
     const staff = getSession(req);
     if (!staff) {
         const login = new URL("/login", req.url);
@@ -18,7 +27,6 @@ export const GET = route(async (req) => {
     // Retired Google portal-login links now lead to the signed-in connection page.
     if (req.nextUrl.searchParams.get("intent") === "login")
         return NextResponse.redirect(new URL("/admin/google-integrations", req.url));
-    const config = googleConfig();
     if (!config.ready)
         return NextResponse.redirect(new URL("/admin/google-integrations?error=GOOGLE_AUTH_FAILED", req.url));
     const state = randomBytes(32).toString("base64url"), verifier = randomBytes(48).toString("base64url");
