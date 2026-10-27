@@ -3,12 +3,13 @@ import { route, RequestError } from "@/lib/http";
 import { getDb } from "@/lib/data/store";
 import { safeEqual } from "@/lib/security/session";
 import { submitCustomForm } from "@/lib/admissions/service";
+import { findPublicForm } from "@/lib/forms/public-links";
 export const POST = route(async (req, { params }: {
     params: {
         slug: string;
     };
 }) => {
-    const form = getDb().customForms.find(f => f.slug === params.slug || f.id === params.slug);
+    const form = findPublicForm(getDb(), params.slug);
     if (!form?.is_active || !form.google_form_config?.enabled)
         throw new RequestError("Google Form integration is disabled.", 404);
     const body = await req.json(), secret = req.headers.get("x-webhook-secret") || body.secret || "";

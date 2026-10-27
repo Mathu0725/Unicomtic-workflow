@@ -5,13 +5,14 @@ import { availableWorkshops, submitCustomForm } from "@/lib/admissions/service";
 import { hasDriveAccess } from "@/lib/google/oauth";
 import { requireCandidateAccess } from "@/lib/security/candidate-access";
 import { documentAnswer } from "@/lib/documents/receipts";
+import { findPublicForm } from "@/lib/forms/public-links";
 export const dynamic = "force-dynamic";
 export const GET = route(async (req, { params }: {
     params: {
         slug: string;
     };
 }) => {
-    const form = getDb().customForms.find(f => f.slug === params.slug || f.id === params.slug);
+    const form = findPublicForm(getDb(), params.slug);
     if (!form || !form.is_active)
         throw new RequestError("This form is unavailable or closed.", 404);
     const documents = getDb().integrations.drive_documents;
@@ -23,7 +24,7 @@ export const POST = route(async (req, { params }: {
         slug: string;
     };
 }) => {
-    const form = getDb().customForms.find(f => f.slug === params.slug || f.id === params.slug);
+    const form = findPublicForm(getDb(), params.slug);
     if (!form)
         throw new RequestError("Form not found.", 404);
     const body = await req.json();
@@ -41,7 +42,7 @@ export const POST = route(async (req, { params }: {
     if (["application", "workshop_rsvp"].includes(form.type) && result.submission.student_id !== requireCandidateAccess(getDb(), req).student.id) throw new RequestError("Use the details of the candidate verified by this email link.", 403);
     return NextResponse.json({ success: true, referenceNo: result.submission.reference_no, trackingReference: result.trackingReference, message: "Your response is saved. Email and Google Sheets updates are queued and tracked.", redirectUrl: form.redirect_url || null });
 }, false, { submission: true, authorize: (req, { params }, db) => {
-    const form = db.customForms.find(form => form.slug === params.slug || form.id === params.slug);
+    const form = findPublicForm(db, params.slug);
     if (form && ["application", "workshop_rsvp"].includes(form.type)) {
         const access = requireCandidateAccess(db, req);
         const campaign = form.campaign_id || db.campaigns.find(campaign => campaign.is_active)?.id;

@@ -1,6 +1,7 @@
 "use client";
 import { apiResponse } from "@/lib/client/api";
 import { Notice as RequestNotice } from "@/components/live-data";
+import { formSlugProblem } from "@/lib/forms/public-links";
 
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
@@ -43,6 +44,7 @@ export default function FormBuilderPage() {
   const formId = params.id as string;
 
   const [form, setForm] = useState<any | null>(null);
+  const [savedSlug, setSavedSlug] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [activeTab, setActiveTab] = useState<"fields" | "sheets" | "email" | "workshops">("fields");
@@ -99,6 +101,7 @@ export default function FormBuilderPage() {
       .then((data) => {
         if (data.form) {
           setForm(data.form);
+          setSavedSlug(data.form.slug);
         }
       })
       .catch((e) => setPageError(e instanceof Error ? e.message : "Could not load this data."))
@@ -206,7 +209,10 @@ export default function FormBuilderPage() {
 
   // Save Form Handler
   const handleSaveForm = async () => {
-    if (!form) return;
+    if (!form || saving) return;
+    const slug = form.slug.trim().toLowerCase();
+    const linkProblem = formSlugProblem(slug);
+    if (linkProblem) { setBanner({ type: "error", message: linkProblem }); return; }
     setSaving(true);
     setBanner(null);
 
@@ -219,7 +225,7 @@ export default function FormBuilderPage() {
           title: form.title,
           expectedUpdatedAt: form.updated_at,
           description: form.description,
-          slug: form.slug,
+          slug,
           is_active: form.is_active,
           fields: form.fields,
           google_sheets_config: form.google_sheets_config,
@@ -233,7 +239,9 @@ export default function FormBuilderPage() {
       const data = await res.json();
       if (data.success) {
         setForm(data.form);
-        setBanner({ type: "success", message: "Form configuration, fields, and automation saved successfully!" });
+        setSavedSlug(data.form.slug);
+        setCopiedLink(false);
+        setBanner({ type: "success", message: data.message });
       } else {
         setBanner({ type: "error", message: data.message });
       }
@@ -245,9 +253,9 @@ export default function FormBuilderPage() {
   };
 
   const copyPublicUrl = async () => {
-    if (!form) return;
+    if (!form || !savedSlug) return;
     const origin = typeof window !== "undefined" ? window.location.origin : "";
-    const publicUrl = `${origin}/form/${form.slug}`;
+    const publicUrl = `${origin}/form/${savedSlug}`;
     try { await navigator.clipboard.writeText(publicUrl); setCopiedLink(true); setTimeout(() => setCopiedLink(false), 2000); } catch { setPageError("Could not copy the link. Select the displayed URL manually."); }
   };
 
@@ -292,7 +300,7 @@ export default function FormBuilderPage() {
             <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 mt-1">
               <span>Public link:</span>
               <span className="font-mono text-blue-700 bg-blue-50 px-2 py-0.5 rounded">
-                /form/{form.slug}
+                /form/{savedSlug}
               </span>
               <button
                 onClick={copyPublicUrl}
@@ -312,7 +320,7 @@ export default function FormBuilderPage() {
 
         <div className="flex items-center gap-2.5">
           <Link
-            href={`/form/${form.slug}`}
+            href={`/form/${savedSlug}`}
             target="_blank"
             className="px-3.5 py-2 rounded-xl bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 font-bold text-xs shadow-xs transition flex items-center gap-1.5"
           >
@@ -355,6 +363,16 @@ export default function FormBuilderPage() {
           {banner.message}
         </div>
       )}
+
+      <section aria-labelledby="public-link-heading" className="space-y-3 rounded-2xl border border-slate-200 bg-white p-5">
+        <div><h2 id="public-link-heading" className="font-bold text-slate-900">Public form link</h2><p id="public-link-help" className="mt-1 text-sm text-slate-500">Change the name after /form/. Use lowercase letters, numbers and single hyphens. Previously shared links will still open this form.</p></div>
+        <label htmlFor="public-form-slug" className="block text-sm font-semibold text-slate-700">Link name</label>
+        <div className="flex max-w-2xl items-center overflow-hidden rounded-xl border border-slate-300 focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-100"><span className="border-r border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-500">/form/</span><input id="public-form-slug" type="text" value={form.slug} disabled={saving} maxLength={100} autoCapitalize="none" autoCorrect="off" spellCheck={false} aria-describedby="public-link-help public-link-preview" aria-invalid={Boolean(formSlugProblem(form.slug.trim().toLowerCase()))} onChange={event => { setForm({ ...form, slug: event.target.value.toLowerCase() }); setCopiedLink(false); }} className="min-w-0 flex-1 bg-white px-3 py-2.5 text-sm outline-none disabled:opacity-60" placeholder="tic-2027-registration" /></div>
+        {formSlugProblem(form.slug.trim().toLowerCase()) ? <p role="alert" className="text-xs text-red-700">{formSlugProblem(form.slug.trim().toLowerCase())}</p> : null}
+        <p id="public-link-preview" className="break-all text-xs text-slate-600">{form.slug.trim().toLowerCase() !== savedSlug ? "New link after saving: " : "Current link: "}{origin}/form/{form.slug.trim().toLowerCase()}</p>
+        {form.slug.trim().toLowerCase() !== savedSlug && <p className="text-xs font-semibold text-amber-700">Choose Save Form to activate the new link. Copy Link and Preview Live Form use the saved link.</p>}
+        {form.previous_slugs?.length > 0 && <details className="text-xs text-slate-500"><summary className="cursor-pointer font-semibold">Previously shared links ({form.previous_slugs.length})</summary><ul className="mt-2 space-y-1">{form.previous_slugs.map((slug: string) => <li key={slug} className="break-all">{origin}/form/{slug}</li>)}</ul></details>}
+      </section>
 
       {/* Tabs Switcher */}
       <div className="flex gap-2 border-b border-slate-200 text-xs font-bold pb-2">
@@ -849,7 +867,7 @@ function onFormSubmit(e) {
       answers: answers
     };
     
-    var webhookUrl = "${origin || "http://localhost:3000"}/api/forms/${form.slug}/google-webhook";
+    var webhookUrl = "${origin || "http://localhost:3000"}/api/forms/${savedSlug}/google-webhook";
     
     var options = {
       method: "post",
@@ -885,7 +903,7 @@ function onFormSubmit(e) {
               {/* Webhook Endpoint Display */}
               <div className="bg-purple-900/80 p-2.5 rounded-lg font-mono text-[11px] text-purple-200 border border-purple-800 flex items-center justify-between">
                 <span className="truncate">
-                  Webhook URL: {origin || "http://localhost:3000"}/api/forms/{form.slug}/google-webhook
+                  Webhook URL: {origin || "http://localhost:3000"}/api/forms/{savedSlug}/google-webhook
                 </span>
               </div>
 

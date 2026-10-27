@@ -6,6 +6,7 @@ import { accessBucket } from "@/lib/security/candidate-access";
 import { candidateEmailSchema } from "@/lib/validations/email";
 import { enqueue } from "@/lib/jobs/outbox";
 import { admissionEmailVariables, renderNotification, savedTemplate } from "@/lib/email/notification-templates";
+import { findPublicForm } from "@/lib/forms/public-links";
 export const dynamic = "force-dynamic";
 const schema = z.object({ reference: z.string().trim().min(4).max(100).transform(value => value.toUpperCase()), email: candidateEmailSchema, purpose: z.enum(["status", "apply"]), formSlug: z.string().max(100).optional() }).strict();
 const generic = "If these details match a registration, a secure link will be emailed to the registered address. Check your inbox and spam folder. Delivery may wait for the sending allowance.";
@@ -17,7 +18,8 @@ export const POST = route(async req => {
   if (!accessBucket(db, "access-request-ip", ip, 100, 15 * 60000)) return NextResponse.json({ success: true, message: generic });
   const registration = db.registrations.find(registration => registration.reference_no.toUpperCase() === reference && registration.status !== "cancelled");
   const student = registration && db.students.find(student => student.id === registration.student_id && student.email.trim().toLowerCase() === email);
-  const form = formSlug ? db.customForms.find(form => form.slug === formSlug && form.is_active && ["application", "workshop_rsvp"].includes(form.type) && (!form.campaign_id || form.campaign_id === registration?.campaign_id)) : undefined;
+  const targetForm = formSlug ? findPublicForm(db, formSlug) : undefined;
+  const form = targetForm?.is_active && ["application", "workshop_rsvp"].includes(targetForm.type) && (!targetForm.campaign_id || targetForm.campaign_id === registration?.campaign_id) ? targetForm : undefined;
   if (registration && student && (!formSlug || form)) {
     if (!accessBucket(db, "access-request-reference", reference, 3, 3600000)) return NextResponse.json({ success: true, message: generic });
     const destination = form ? `/form/${form.slug}` : undefined;
