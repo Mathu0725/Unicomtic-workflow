@@ -6,3 +6,10 @@
 .next-vercel-check
 node_modules
 *.tsbuildinfo
+.vercel
+next-env.d.ts
+supabase/.temp
+docs/validation/*.jpg
+docs/validation/*.jpeg
+docs/validation/*.png
+docs/validation/*.webp
