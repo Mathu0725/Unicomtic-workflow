@@ -275,6 +275,7 @@ export interface GoogleFormConfig {
 export interface CustomForm {
   id: string;
   slug: string;
+  previous_slugs?: string[];
   title: string;
   description: string;
   type: "registration" | "application" | "workshop_rsvp" | "custom";

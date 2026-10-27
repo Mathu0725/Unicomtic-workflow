@@ -8,10 +8,11 @@ import { DOCUMENT_MAX_BYTES } from "@/lib/documents/constants";
 import { MULTIPART_MAX_BYTES } from "@/lib/upload-limits";
 import { uploadReceipt, type DocumentUpload } from "@/lib/documents/receipts";
 import { requireCandidateAccess } from "@/lib/security/candidate-access";
+import { findPublicForm } from "@/lib/forms/public-links";
 export const dynamic = "force-dynamic";
 
 function assertForm(slug: string, fieldId: string, version: string, req: NextRequest) {
-  const form = getDb().customForms.find(form => form.slug === slug || form.id === slug);
+  const form = findPublicForm(getDb(), slug);
   if (!form?.is_active || !getDb().campaigns.some(campaign => campaign.id === form.campaign_id && campaign.is_active)) throw new RequestError("This form is unavailable or closed.", 404);
   const access = ["application", "workshop_rsvp"].includes(form.type) ? requireCandidateAccess(getDb(), req) : undefined;
   if (access && access.registration.campaign_id !== form.campaign_id) throw new RequestError("This form belongs to a different intake.", 403);
