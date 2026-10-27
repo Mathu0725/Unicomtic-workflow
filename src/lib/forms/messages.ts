@@ -13,6 +13,19 @@ export const defaultFormMessages = {
 export type FormMessages = typeof defaultFormMessages;
 export type FormMessageKey = keyof FormMessages;
 
+export const defaultFormMessageDisplay = {
+  popup_enabled: true,
+  bottom_messages_enabled: true,
+};
+export type FormMessageDisplay = typeof defaultFormMessageDisplay;
+
+export function resolveFormMessageDisplay(saved?: Partial<FormMessageDisplay> | null): FormMessageDisplay {
+  return {
+    popup_enabled: typeof saved?.popup_enabled === "boolean" ? saved.popup_enabled : defaultFormMessageDisplay.popup_enabled,
+    bottom_messages_enabled: typeof saved?.bottom_messages_enabled === "boolean" ? saved.bottom_messages_enabled : defaultFormMessageDisplay.bottom_messages_enabled,
+  };
+}
+
 export function resolveFormMessages(saved?: Partial<FormMessages> | null): FormMessages {
   return Object.fromEntries(Object.entries(defaultFormMessages).map(([key, value]) => [key, typeof saved?.[key as FormMessageKey] === "string" ? saved[key as FormMessageKey] : value])) as FormMessages;
 }

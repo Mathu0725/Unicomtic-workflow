@@ -2,7 +2,7 @@
 import { apiResponse } from "@/lib/client/api";
 import { Notice as RequestNotice } from "@/components/live-data";
 import { formSlugProblem } from "@/lib/forms/public-links";
-import { defaultFormMessages, formMessageFields, resolveFormMessages } from "@/lib/forms/messages";
+import { defaultFormMessages, formMessageFields, resolveFormMessageDisplay, resolveFormMessages } from "@/lib/forms/messages";
 import FormInstructions from "@/components/form-instructions";
 import FormSubmitMessages from "@/components/form-submit-messages";
 
@@ -103,7 +103,7 @@ export default function FormBuilderPage() {
       .then((res) => res.json())
       .then((data) => {
         if (data.form) {
-          setForm({ ...data.form, messages: resolveFormMessages(data.form.messages) });
+          setForm({ ...data.form, messages: resolveFormMessages(data.form.messages), message_display: resolveFormMessageDisplay(data.form.message_display) });
           setSavedSlug(data.form.slug);
         }
       })
@@ -240,12 +240,13 @@ export default function FormBuilderPage() {
           email_automation: form.email_automation,
           confirmation_message: form.confirmation_message,
           messages,
+          message_display: resolveFormMessageDisplay(form.message_display),
         }),
       });
 
       const data = await res.json();
       if (data.success) {
-        setForm({ ...data.form, messages: resolveFormMessages(data.form.messages) });
+        setForm({ ...data.form, messages: resolveFormMessages(data.form.messages), message_display: resolveFormMessageDisplay(data.form.message_display) });
         setSavedSlug(data.form.slug);
         setCopiedLink(false);
         setBanner({ type: "success", message: data.message });
@@ -284,6 +285,7 @@ export default function FormBuilderPage() {
   }
 
   const messages = resolveFormMessages(form.messages);
+  const messageDisplay = resolveFormMessageDisplay(form.message_display);
   return (
     <div className="space-y-6">
       <RequestNotice error>{pageError}</RequestNotice>
@@ -433,10 +435,23 @@ export default function FormBuilderPage() {
         <button onClick={() => setActiveTab("messages")} className={`rounded-lg border px-4 py-2 text-sm font-semibold ${activeTab === "messages" ? "border-blue-600 bg-blue-600 text-white" : "border-blue-200 text-blue-700"}`}>5. Messages & popup</button>
       </div>
       {activeTab === "messages" && <section aria-labelledby="form-messages-heading" className="space-y-5 rounded-2xl border border-slate-200 bg-white p-6">
-        <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 id="form-messages-heading" className="text-lg font-bold">Form messages & popup</h2><p className="mt-1 max-w-2xl text-sm text-slate-500">Set instructions and draft messages for this form in English or Tamil. Submit instructions appear in both the popup and below the submit button. Choose Save Form to apply your changes.</p></div><FormInstructions messages={messages} autoOpen={false} triggerLabel="Preview popup" /></div>
+        <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 id="form-messages-heading" className="text-lg font-bold">Form messages & popup</h2><p className="mt-1 max-w-2xl text-sm text-slate-500">Set instructions and draft messages for this form in English or Tamil. Control the popup and below-button messages separately. Choose Save Form to apply your changes.</p></div><FormInstructions messages={messages} enabled={messageDisplay.popup_enabled} autoOpen={false} triggerLabel="Preview popup" /></div>
+        <fieldset className="space-y-3 rounded-xl border border-slate-200 p-4">
+          <legend className="px-1 text-sm font-bold text-slate-700">Message visibility for this form</legend>
+          <label className="flex cursor-pointer items-start gap-3">
+            <input type="checkbox" role="switch" checked={messageDisplay.popup_enabled} disabled={saving} onChange={event => setForm({ ...form, message_display: { ...messageDisplay, popup_enabled: event.target.checked } })} className="mt-1 h-4 w-4 accent-blue-600 disabled:opacity-60" aria-describedby="popup-visibility-help" />
+            <span><span className="text-sm font-semibold text-slate-700">Enable popup</span><span id="popup-visibility-help" className="mt-1 block text-xs text-slate-500">Show the instructions popup when the form opens and allow visitors to reopen it. Off hides both the popup and its button.</span></span>
+          </label>
+          <label className="flex cursor-pointer items-start gap-3">
+            <input type="checkbox" role="switch" checked={messageDisplay.bottom_messages_enabled} disabled={saving} onChange={event => setForm({ ...form, message_display: { ...messageDisplay, bottom_messages_enabled: event.target.checked } })} className="mt-1 h-4 w-4 accent-blue-600 disabled:opacity-60" aria-describedby="bottom-messages-visibility-help" />
+            <span><span className="text-sm font-semibold text-slate-700">Enable bottom messages</span><span id="bottom-messages-visibility-help" className="mt-1 block text-xs text-slate-500">Show the English and Tamil instructions and draft saving notice below the submit button. The submit button and automatic draft saving keep working.</span></span>
+          </label>
+          <p className="text-xs text-slate-500">Turning a switch off keeps your saved text. Turn it on again to show the same messages.</p>
+          {!messageDisplay.popup_enabled && <p className="text-xs font-semibold text-amber-700">Popup is disabled for this form. Enable it to preview.</p>}
+        </fieldset>
         <p className="text-xs text-slate-500">Use plain text. Optional messages can be left empty to hide them. Draft saving and restoring continue to work with your edited text.</p>
         <div className="grid gap-5 md:grid-cols-2">{formMessageFields.map(field => <label key={field.key} className={`block text-sm font-semibold text-slate-700 ${field.key === "popupNotes" ? "md:col-span-2" : ""}`}><span>{field.label}{field.required ? " *" : ""}</span>{field.rows ? <textarea rows={field.rows} required={field.required} maxLength={field.maxLength} disabled={saving} value={messages[field.key]} onChange={event => setForm({ ...form, messages: { ...messages, [field.key]: event.target.value } })} className="mt-1 w-full resize-y rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-normal leading-relaxed outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:opacity-60" /> : <input type="text" required={field.required} maxLength={field.maxLength} disabled={saving} value={messages[field.key]} onChange={event => setForm({ ...form, messages: { ...messages, [field.key]: event.target.value } })} className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-normal outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:opacity-60" />}{field.hint && <span className="mt-1 block text-xs font-normal text-slate-500">{field.hint}</span>}</label>)}</div>
-        <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-5 text-center"><h3 className="text-xs font-bold uppercase text-slate-400">Below-button preview</h3><div className="rounded-xl bg-[#4d4d4d] px-4 py-3 text-sm font-bold text-white">{messages.submitButtonLabel}</div><FormSubmitMessages messages={messages} /></div>
+        <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-5 text-center"><h3 className="text-xs font-bold uppercase text-slate-400">Below-button preview</h3><div className="rounded-xl bg-[#4d4d4d] px-4 py-3 text-sm font-bold text-white">{messages.submitButtonLabel}</div><FormSubmitMessages messages={messages} enabled={messageDisplay.bottom_messages_enabled} />{!messageDisplay.bottom_messages_enabled && <p className="text-xs text-slate-500">Bottom messages are hidden for this form.</p>}</div>
         <button type="button" disabled={saving} onClick={() => { setForm({ ...form, messages: { ...defaultFormMessages } }); setBanner({ type: "success", message: "Default messages loaded into the editor. Choose Save Form to apply them." }); }} className="text-sm font-semibold text-blue-700 disabled:opacity-60">Load default messages</button>
       </section>}
       {activeTab === "workshops" && <section className="bg-white rounded-2xl border border-slate-200 p-6 space-y-4">

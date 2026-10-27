@@ -1,4 +1,9 @@
 import { z } from "zod";
+export const formMessageDisplaySchema = z.object({
+  popup_enabled: z.boolean(),
+  bottom_messages_enabled: z.boolean(),
+}).partial().strict();
+
 export const formMessagesSchema = z.object({
   popupTitle: z.string().trim().min(1).max(160),
   popupSubtitle: z.string().trim().max(300),

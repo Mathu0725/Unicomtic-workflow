@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { useParams } from "next/navigation";
 import FormInstructions from "@/components/form-instructions";
 import FormSubmitMessages from "@/components/form-submit-messages";
-import { resolveFormMessages } from "@/lib/forms/messages";
+import { resolveFormMessageDisplay, resolveFormMessages } from "@/lib/forms/messages";
 import FormThankYou from "@/components/form-thank-you";
 import DocumentUploadField from "@/components/document-upload-field";
 import { submitRequest } from "@/lib/client/submit";
@@ -251,6 +251,7 @@ export default function PublicCustomFormPage() {
 
   if (submitted) return <FormThankYou />;
   const messages = resolveFormMessages(form.messages);
+  const messageDisplay = resolveFormMessageDisplay(form.message_display);
 
   const content = (
     <div className="min-h-screen bg-slate-50 py-10 px-4 sm:px-6 lg:px-8 accent-[#4d4d4d]">
@@ -263,7 +264,7 @@ export default function PublicCustomFormPage() {
           </div>
         )}
 
-        <FormInstructions key={slug} messages={messages} />
+        <FormInstructions key={slug} messages={messages} enabled={messageDisplay.popup_enabled} />
 
         {/* Draft Notification Banner */}
         {draftError && <p role="status" className="rounded-lg border border-neutral-200 bg-neutral-50 p-3 text-sm text-neutral-900">{draftError}</p>}
@@ -523,7 +524,7 @@ export default function PublicCustomFormPage() {
                 )}
               </button>
 
-              <FormSubmitMessages messages={messages} />
+              <FormSubmitMessages messages={messages} enabled={messageDisplay.bottom_messages_enabled} />
             </div>
           </form>
         </div>
