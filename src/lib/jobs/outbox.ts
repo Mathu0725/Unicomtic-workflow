@@ -11,12 +11,20 @@ import { reminderCohorts, reminderMatches } from "../reminders/eligibility";
 import { EMAIL_DAY_MS, emailBudget, emailSender, reserveEmailDispatch, settleEmailDispatch } from "../email/sending-budget";
 import { emailCandidates } from "../email/candidates";
 import { secureCandidateEmail } from "../security/candidate-access";
+import { defaultEmailAccountId, GMAIL_ACCOUNT } from "../email/accounts";
+import { sanitizeEmailHtml } from "../email/sanitize";
 export function enqueue(db: DatabaseStore, type: OutboxJob["type"], key: string, payload: Record<string, any>) {
     const existing = db.outbox.find(j => j.key === key);
     if (existing)
         return existing;
     const job: OutboxJob = { id: randomUUID(), key, type, payload, status: "queued", attempts: 0, created_at: new Date().toISOString(), request_id: requestContext.getStore()?.requestId };
-    const blocker = db.outbox.find(j => j.status === "blocked" && j.error_code !== "CANDIDATE_EXPORT_CHANGED" && (type === "sheet" ? j.type === "sheet" && (j.payload.sheetId === payload.sheetId && j.payload.sheetName === payload.sheetName || ["GOOGLE_AUTH_REVOKED", "GOOGLE_NOT_CONNECTED", "GOOGLE_NOT_CONFIGURED", "GOOGLE_TOKEN_UNREADABLE"].includes(j.error_code || "")) : j.type === "email" && (j.error_code?.startsWith(db.integrations.email_provider === "smtp" ? "SMTP_" : "GOOGLE_"))));
+    if (type === "email") {
+        job.email_account_id = payload.smtpAccountId || defaultEmailAccountId(db);
+        job.fallback_email_account_id = payload.fallbackSmtpAccountId || undefined;
+        job.initiated_by = payload.initiatedBy;
+        job.payload = { ...payload, html: sanitizeEmailHtml(String(payload.html || "")) };
+    }
+    const blocker = db.outbox.find(j => j.status === "blocked" && j.error_code !== "CANDIDATE_EXPORT_CHANGED" && (type === "sheet" ? j.type === "sheet" && (j.payload.sheetId === payload.sheetId && j.payload.sheetName === payload.sheetName || ["GOOGLE_AUTH_REVOKED", "GOOGLE_NOT_CONNECTED", "GOOGLE_NOT_CONFIGURED", "GOOGLE_TOKEN_UNREADABLE"].includes(j.error_code || "")) : j.type === "email" && (j.email_account_id || defaultEmailAccountId(db)) === job.email_account_id && !job.fallback_email_account_id && j.error_code?.startsWith(job.email_account_id === GMAIL_ACCOUNT ? "GOOGLE_" : "SMTP_")));
     if (blocker) { job.status = "blocked"; job.error = blocker.error; job.error_code = blocker.error_code; job.repair_action = blocker.repair_action; }
     db.outbox.push(job);
     return job;
@@ -63,27 +71,34 @@ export async function processOutbox(limit = 120, timeBudgetMs = 45000, onlyJobId
                     if (item.type === "email") {
                         item.last_attempt_at ||= new Date(Date.parse(item.lease_until!) - 120000).toISOString();
                         settleEmailDispatch(db, item, "uncertain", Math.min(now, Date.parse(item.lease_until!)));
+                        item.error_code = "SEND_UNCERTAIN";
+                        item.delivery_attempts ||= [];
+                        item.delivery_attempts.push({account_id:item.email_account_id || defaultEmailAccountId(db),at:new Date(now).toISOString(),outcome:"uncertain",code:"WORKER_INTERRUPTED"});
                     }
                     item.status = item.type === "email" ? "uncertain" : "queued";
                     item.error = item.type === "email" ? "Worker interrupted. Check provider before retrying this email." : "Worker interrupted. Spreadsheet references will be reconciled on retry.";
                 }
             const busySheets = db.outbox.some(j => j.type === "sheet" && j.status === "sending");
-            const budget = emailBudget(db, now);
+            const budgets = new Map<string, ReturnType<typeof emailBudget>>();
+            const jobBudget = (job: OutboxJob) => { const id = job.email_account_id || defaultEmailAccountId(db); if (!budgets.has(id)) budgets.set(id, emailBudget(db,now,emailSender(db,id),id)); return budgets.get(id)!; };
             const due = (job: OutboxJob) => (!onlyJobId || job.id === onlyJobId) && job.status === "queued" && (!job.next_attempt_at || Date.parse(job.next_attempt_at) <= now);
-            if (!budget.canSend) for (const item of db.outbox.filter(job => job.type === "email" && due(job))) {
+            for (const item of db.outbox.filter(job => job.type === "email" && due(job))) {
+                item.email_account_id ||= defaultEmailAccountId(db);
+                const budget = jobBudget(item);
+                if (budget.canSend) continue;
                 item.deferred_reason = budget.paused ? "EMAIL_PROVIDER_DAILY_LIMIT" : "EMAIL_DAILY_LIMIT";
                 item.deferred_until = budget.nextAvailableAt || undefined;
             }
             const eligible = (job: OutboxJob) => due(job) && (job.type === "sheet"
                 ? !busySheets && (db.queueControl.sheets_next_dispatch_at || 0) <= now
-                : budget.canSend && (db.queueControl.email_next_dispatch_at || 0) <= now);
+                : jobBudget(job).canSend && (db.queueControl.email_next_dispatch_at || 0) <= now);
             // Flush a waiting sheet batch first so a large email backlog cannot starve exports.
             const next = db.outbox.find(j => j.type === "sheet" && eligible(j)) || db.outbox.find(eligible);
             if (!next) {
                 const readyTimes = db.outbox.filter(j => (!onlyJobId || j.id === onlyJobId) && j.status === "queued" && !(j.type === "sheet" && busySheets)).map(j => Math.max(
                     j.next_attempt_at ? Date.parse(j.next_attempt_at) : now,
                     j.type === "sheet" ? db.queueControl.sheets_next_dispatch_at || now : db.queueControl.email_next_dispatch_at || now,
-                    j.type === "email" && !budget.canSend ? Date.parse(budget.nextAvailableAt || "") || now + EMAIL_DAY_MS : now,
+                    j.type === "email" && !jobBudget(j).canSend ? Date.parse(jobBudget(j).nextAvailableAt || "") || now + EMAIL_DAY_MS : now,
                 ));
                 return { jobs: [] as OutboxJob[], waitMs: readyTimes.length ? readyTimes.reduce((min, value) => Math.min(min, value), Infinity) - now : 0 };
             }
@@ -127,14 +142,14 @@ export async function processOutbox(limit = 120, timeBudgetMs = 45000, onlyJobId
         try {
             const db = await readDatabase();
             result = await databaseContext.run(db, async () => {
-            if (job.type === "email" && job.sender_identity !== emailSender(db)) return { success: false, error: "The sending account changed. This email will retry using the current account's allowance.", errorCode: "EMAIL_SENDER_CHANGED", failureKind: "temporary" as const };
+            if (job.type === "email" && job.sender_identity !== emailSender(db, job.email_account_id)) return { success: false, error: "The sending account changed. This email will retry using the selected account's allowance.", errorCode: "EMAIL_SENDER_CHANGED", failureKind: "temporary" as const };
             if (job.type === "email" && job.payload.candidateMessage) {
                 const context = job.payload.candidateMessage;
                 const current = emailCandidates(db, context.stage).find(candidate => candidate.id === context.recordId);
                 if (!current || current.email.toLowerCase() !== String(job.payload.to).toLowerCase()) return { success: false, error: "The candidate record or email address changed after this message was queued. Select the candidate again and compose a new message.", errorCode: "CANDIDATE_CONTACT_CHANGED", failureKind: "permanent" as const };
             }
             if (job.type === "email")
-                return sendEmail({ ...secureCandidateEmail(db, job.payload), messageId: `<${job.id}@unicom-tic.local>` } as SendEmailPayload);
+                return sendEmail({ ...secureCandidateEmail(db, job.payload), smtpAccountId: job.email_account_id, messageId: `<${job.id}@unicom-tic.local>` } as SendEmailPayload);
             const rows = jobs.flatMap(item => item.payload.rows);
             const res = await googleSheetsService.syncRecords(job.payload.sheetId, "registrations", rows, job.payload.sheetName);
             return { success: res.success, error: res.error, provider: "google_sheets", messageId: job.payload.sheetId, uncertain: false, retryAfterMs: res.retryAfterMs, errorCode: res.errorCode, failureKind: res.failureKind, action: res.action };
@@ -149,6 +164,10 @@ export async function processOutbox(limit = 120, timeBudgetMs = 45000, onlyJobId
             if (!saved || saved.status !== "sending" || saved.attempts !== job.attempts)
                 continue;
             saved.lease_until = undefined;
+            if (job.type === "email") {
+                saved.delivery_attempts ||= [];
+                saved.delivery_attempts.push({ account_id: job.email_account_id!, at: new Date().toISOString(), outcome: result.success ? "accepted" : result.uncertain || result.failureKind === "uncertain" ? "uncertain" : "rejected", code: result.errorCode, provider_id: result.messageId });
+            }
             if (job.type === "email") settleEmailDispatch(state, saved, result.success ? "accepted" : result.uncertain || result.failureKind === "uncertain" ? "uncertain" : "rejected", Date.now());
             if (job.type === "email" && result.errorCode === "EMAIL_PROVIDER_DAILY_LIMIT") {
                 state.queueControl.email_cooldowns ||= {};
@@ -164,11 +183,12 @@ export async function processOutbox(limit = 120, timeBudgetMs = 45000, onlyJobId
                 saved.next_attempt_at = undefined;
                 saved.provider = result.provider;
                 saved.provider_id = result.messageId;
+                saved.provider_response = result.providerResponse;
                 const sub = state.formSubmissions.find(s => s.id === job.payload.sourceId);
                 if (sub) {
                     if (job.type === "sheet")
                         sub.synced_to_sheet = true;
-                    else
+                    else if (job.payload.notificationEvent !== "staff_alert" && !job.key.includes(":admin:"))
                         sub.email_sent = true;
                 }
                 const decision = state.selectionDecisions.find(d => d.id === job.payload.decisionId);
@@ -184,6 +204,12 @@ export async function processOutbox(limit = 120, timeBudgetMs = 45000, onlyJobId
                 saved.repair_action = result.action;
                 const delay = Math.max(result.retryAfterMs || 0, Math.min(3600000, 60000 * 2 ** (saved.attempts - 1)));
                 saved.next_attempt_at = saved.status === "queued" ? new Date(Date.now() + delay + Math.random() * 1000).toISOString() : undefined;
+                if (!result.uncertain && ["temporary", "blocked"].includes(result.failureKind || "") && result.errorCode !== "EMAIL_PROVIDER_DAILY_LIMIT" && saved.fallback_email_account_id && !saved.fallback_used && saved.attempts < 8) {
+                    saved.email_account_id = saved.fallback_email_account_id;
+                    saved.fallback_used = true;
+                    saved.status = "queued";
+                    saved.next_attempt_at = new Date(Date.now() + 60000).toISOString();
+                }
                 const decision = state.selectionDecisions.find(d => d.id === job.payload.decisionId);
                 if (decision)
                     decision.notification_status = "failed";
@@ -193,7 +219,7 @@ export async function processOutbox(limit = 120, timeBudgetMs = 45000, onlyJobId
             // A broken account/destination should not consume attempts on every queued record.
             for (const pending of state.outbox.filter(j => j.status === "queued")) {
                 const accountFailure = ["GOOGLE_NOT_CONNECTED", "GOOGLE_NOT_CONFIGURED", "GOOGLE_AUTH_REVOKED", "GOOGLE_TOKEN_FAILED", "GOOGLE_TOKEN_UNREADABLE"].includes(result.errorCode || "");
-                const affected = accountFailure ? pending.type === "sheet" || state.integrations.email_provider === "gmail" : pending.type === job.type && (job.type === "email" || pending.payload.sheetId === job.payload.sheetId && pending.payload.sheetName === job.payload.sheetName);
+                const affected = pending.type === "email" ? (pending.email_account_id || defaultEmailAccountId(state)) === job.email_account_id && !pending.fallback_email_account_id : accountFailure && job.email_account_id === GMAIL_ACCOUNT || pending.type === job.type && pending.payload.sheetId === job.payload.sheetId && pending.payload.sheetName === job.payload.sheetName;
                 if (affected) { pending.status = "blocked"; pending.error = result.error; pending.error_code = result.errorCode; pending.repair_action = result.action; pending.next_attempt_at = undefined; }
             }
           }

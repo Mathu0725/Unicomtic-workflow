@@ -4,6 +4,8 @@
 
 Open **Email Center → Email Templates → Form routing**. Each form has one applicant confirmation selection, one staff alert selection, separate Off choices, and additional staff recipients. Choose the form's existing custom wording or a centrally edited confirmation template. The **Edit templates** tab holds message wording. Saving routing affects new submissions; it does not resend or rewrite earlier messages.
 
+Applicant and staff messages also have separate sending-account selectors and explicit optional fallbacks. Empty primary uses the default at enqueue time; already queued jobs retain their selected sender. No fallback is attempted for uncertain acceptance or exhausted allowance. See [SMTP setup and queue operations](SMTP_EMAIL_MANAGEMENT.md).
+
 Registration emails include an application link only when an application form is explicitly selected in routing. That link is added to the registration receipt, not sent as an extra invitation. The target must belong to the same intake and accept responses. An open target uses its public form URL; a restricted target uses a private email link to that specific form. Old public slugs still resolve to the canonical form.
 
 Delivery activity shows the source form and distinguishes **Applicant confirmation**, **Admissions staff alert** and **Secure access link**. Staff who also submit as applicants may receive both a receipt and a staff alert. Staff recipients are normalized and deduplicated. Submission retry keys, intake identity uniqueness and queue job keys prevent repeated confirmations. Repeated secure-link requests for the same recipient, purpose and canonical form reuse pending requests and have a five-minute resend cooldown.

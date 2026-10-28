@@ -5,7 +5,16 @@ import { queueEmail } from "@/lib/jobs/outbox";
 import { z } from "zod";
 import { sheetTargetChanged } from "@/lib/google/job-target";
 import { reminderCohorts, reminderMatches } from "@/lib/reminders/eligibility";
-import { emailBudget } from "@/lib/email/sending-budget";
+import {
+  emailBudget,
+  emailSender,
+  settleEmailDispatch,
+} from "@/lib/email/sending-budget";
+import {
+  defaultEmailAccountId,
+  emailAccountOptions,
+} from "@/lib/email/accounts";
+import { getSession } from "@/lib/security/session";
 import { emailCandidateResolver } from "@/lib/email/candidates";
 import { emailJobStatus } from "@/lib/email/job-status";
 import { renderNotification } from "@/lib/email/notification-templates";
@@ -17,6 +26,8 @@ export const GET = route(async (req) => {
     budget = emailBudget(db),
     resolveCandidate = emailCandidateResolver(db),
     params = req.nextUrl.searchParams;
+  const accounts = emailAccountOptions(db),
+    accountBudgets = new Map<string, ReturnType<typeof emailBudget>>();
   const search = (params.get("search") || "").trim().toLowerCase(),
     page = Math.max(1, Math.min(100000, Number(params.get("page")) || 1)),
     pageSize = 50;
@@ -59,17 +70,35 @@ export const GET = route(async (req) => {
             submission_confirmation: "Applicant confirmation",
             staff_alert: "Admissions staff alert",
           } as Record<string, string>
-        )[event] || "Manual / system message";
+        )[event] ||
+        String(job.payload.templateId || event).replaceAll("_", " ");
+      const accountId = job.email_account_id || defaultEmailAccountId(db);
+      if (!accountBudgets.has(accountId))
+        accountBudgets.set(
+          accountId,
+          emailBudget(db, Date.now(), emailSender(db, accountId), accountId),
+        );
+      const currentBudget = accountBudgets.get(accountId)!;
       const deferred =
-        job.type === "email" && job.status === "queued" && !budget.canSend;
+        job.type === "email" &&
+        job.status === "queued" &&
+        !currentBudget.canSend;
       return {
         ...job,
         formTitle: source?.title,
         emailKind,
+        purpose: event === "other" ? job.payload.templateId || "other" : event,
+        formId: source?.id,
+        intakeId: source?.campaign_id || candidate?.campaignId,
+        accountId,
+        accountName:
+          accounts.find((account) => account.id === accountId)?.name ||
+          accountId,
+        manual: Boolean(job.initiated_by || job.payload.candidateMessage),
         ...(deferred
           ? {
-              deferred_until: budget.nextAvailableAt || undefined,
-              deferred_reason: budget.paused
+              deferred_until: currentBudget.nextAvailableAt || undefined,
+              deferred_reason: currentBudget.paused
                 ? "EMAIL_PROVIDER_DAILY_LIMIT"
                 : "EMAIL_DAILY_LIMIT",
             }
@@ -79,6 +108,16 @@ export const GET = route(async (req) => {
     })
     .filter(
       (job) =>
+        (!params.get("from") ||
+          job.created_at.slice(0, 10) >= params.get("from")!) &&
+        (!params.get("until") ||
+          job.created_at.slice(0, 10) <= params.get("until")!) &&
+        (!params.get("form") || job.formId === params.get("form")) &&
+        (!params.get("intake") || job.intakeId === params.get("intake")) &&
+        (!params.get("purpose") || job.purpose === params.get("purpose")) &&
+        (!params.get("account") || job.accountId === params.get("account")) &&
+        (!params.get("origin") ||
+          (params.get("origin") === "manual" ? job.manual : !job.manual)) &&
         (!params.get("type") ||
           params.get("type") === "all" ||
           job.type === params.get("type")) &&
@@ -89,7 +128,8 @@ export const GET = route(async (req) => {
           job.candidate?.id === params.get("candidate")) &&
         (!params.get("status") ||
           params.get("status") === "all" ||
-          emailJobStatus(job).filter === params.get("status")) &&
+          emailJobStatus(job).filter === params.get("status") ||
+          job.status === params.get("status")) &&
         (!search ||
           [
             job.payload.to,
@@ -97,6 +137,9 @@ export const GET = route(async (req) => {
             job.candidate?.name,
             job.candidate?.reference,
             job.candidate?.registrationReference,
+            job.provider_id,
+            job.id,
+            job.payload.manualBatchId,
           ].some(
             (value) =>
               typeof value === "string" && value.toLowerCase().includes(search),
@@ -109,6 +152,23 @@ export const GET = route(async (req) => {
     page,
     pageSize,
     budget,
+    filters: {
+      accounts: emailAccountOptions(db),
+      forms: db.customForms.map((form) => ({ id: form.id, title: form.title })),
+      intakes: db.campaigns.map((item) => ({ id: item.id, title: item.title })),
+      purposes: [
+        ...new Set(
+          db.outbox
+            .filter((job) => job.type === "email")
+            .map(
+              (job) =>
+                job.payload.notificationEvent ||
+                job.payload.templateId ||
+                "other",
+            ),
+        ),
+      ],
+    },
     worker: {
       lastSeen: lastSeen ? new Date(lastSeen).toISOString() : null,
       stale: Date.now() - lastSeen > 120000,
@@ -132,6 +192,75 @@ export const POST = route(
         },
         `test:${crypto.randomUUID()}`,
       );
+    } else if (body.action === "reconcile_accepted") {
+      const db = getDb(),
+        job = db.outbox.find(
+          (job) => job.id === body.jobId && job.type === "email",
+        );
+      if (
+        !job ||
+        job.status !== "uncertain" ||
+        body.confirmProviderChecked !== true
+      )
+        throw new RequestError(
+          "Select an uncertain email and verify acceptance in the provider's Sent folder or SMTP logs first.",
+        );
+      const providerId = z
+        .string()
+        .trim()
+        .min(1)
+        .max(250)
+        .regex(
+          /^[\w@.<>:+/=-]+$/,
+          "Enter the provider message ID without spaces or control characters.",
+        )
+        .parse(body.providerId);
+      settleEmailDispatch(db, job, "accepted", Date.now());
+      Object.assign(job, {
+        status: "sent",
+        provider_id: providerId,
+        provider_response:
+          "Acceptance verified by an administrator in provider records",
+        completed_at: new Date().toISOString(),
+        error: undefined,
+        error_code: undefined,
+        repair_action: undefined,
+        next_attempt_at: undefined,
+        deferred_until: undefined,
+        deferred_reason: undefined,
+      });
+      job.delivery_attempts ||= [];
+      job.delivery_attempts.push({
+        account_id: job.email_account_id || defaultEmailAccountId(db),
+        at: new Date().toISOString(),
+        outcome: "accepted_after_verification",
+        provider_id: providerId,
+      });
+      const sub = db.formSubmissions.find(
+        (item) => item.id === job.payload.sourceId,
+      );
+      if (
+        sub &&
+        job.payload.notificationEvent !== "staff_alert" &&
+        !job.key.includes(":admin:")
+      )
+        sub.email_sent = true;
+      const decision = db.selectionDecisions.find(
+        (item) => item.id === job.payload.decisionId,
+      );
+      if (decision) {
+        decision.notification_status = "sent";
+        decision.notified_at = job.completed_at;
+      }
+      db.auditLogs.push({
+        id: crypto.randomUUID(),
+        user_email: getSession(req)!.email,
+        action: "EMAIL_ACCEPTANCE_VERIFIED",
+        entity_name: "outbox",
+        entity_id: job.id,
+        changes: { providerId, accountId: job.email_account_id },
+        created_at: new Date().toISOString(),
+      });
     } else if (body.action === "retry") {
       const job = getDb().outbox.find((j) => j.id === body.jobId);
       if (!job || !["failed", "uncertain", "blocked"].includes(job.status))
@@ -190,7 +319,20 @@ export const POST = route(
       job.error = undefined;
       job.error_code = undefined;
       job.repair_action = undefined;
+      getDb().auditLogs.push({
+        id: crypto.randomUUID(),
+        user_email: getSession(req)!.email,
+        action: "DELIVERY_RETRY_REQUESTED",
+        entity_name: "outbox",
+        entity_id: job.id,
+        changes: {
+          providerChecked: body.confirmProviderChecked === true,
+          accountId: job.email_account_id,
+        },
+        created_at: new Date().toISOString(),
+      });
     } else if (body.action === "release_blocked") {
+      let released = 0;
       for (const job of getDb().outbox.filter((j) => j.status === "blocked")) {
         if (
           [
@@ -207,7 +349,17 @@ export const POST = route(
         job.error = undefined;
         job.error_code = undefined;
         job.repair_action = undefined;
+        released++;
       }
+      getDb().auditLogs.push({
+        id: crypto.randomUUID(),
+        user_email: getSession(req)!.email,
+        action: "BLOCKED_DELIVERIES_RELEASED",
+        entity_name: "outbox",
+        entity_id: "batch",
+        changes: { count: released },
+        created_at: new Date().toISOString(),
+      });
     } else if (body.action !== "process")
       throw new RequestError("Unknown action.");
     return NextResponse.json({

@@ -8,6 +8,7 @@ import { formLinkTaken } from "@/lib/forms/public-links";
 import { editorValues } from "@/lib/forms/editor";
 import { fieldIdentityKeys, identityKeys } from "@/lib/forms/field-rules";
 import { richTextPlainText } from "@/lib/forms/rich-text";
+import { validateEmailAccount } from "@/lib/email/accounts";
 export const dynamic = "force-dynamic";
 const find = (id: string) =>
   getDb().customForms.find((f) => f.id === id || f.slug === id);
@@ -161,6 +162,10 @@ export const PATCH = route(
       )
     )
       throw new RequestError("Choose workshops from this form's intake.");
+    if (parsed.data.email_automation) {
+      const automation = parsed.data.email_automation;
+      for (const id of [automation.applicant_account_id,automation.applicant_fallback_account_id,automation.admin_account_id,automation.admin_fallback_account_id]) validateEmailAccount(getDb(),id);
+    }
     if (
       parsed.data.email_automation?.invitation_form_id &&
       (form.type !== "registration" ||

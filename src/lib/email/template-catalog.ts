@@ -50,6 +50,7 @@ export function templateContentLimits(id: string) {
   return { subject: reminderKinds.some(kind => kind === id) ? 200 : 250, body: reminderKinds.some(kind => kind === id) ? 6000 : id === "candidate_message" ? 10000 : 12000 };
 }
 export function templateProblem(content: EmailTemplateContent, variables: readonly string[], limits = { subject: 250, body: 12000 }) {
+  if (/\/access(?:#|\?)(?:[^\s<>]*&)?token=/i.test(content.subject + content.body)) return "Do not save an expiring access token in a template. Secure access links are generated automatically at dispatch.";
   if (!content.subject.trim() || content.subject.length > limits.subject || /[\r\n]/.test(content.subject)) return `Enter a subject on one line, up to ${limits.subject} characters.`;
   if (!content.body.trim() || content.body.length > limits.body) return `Enter a message up to ${limits.body.toLocaleString("en-US")} characters.`;
   if (content.actionLabel !== undefined && (content.actionLabel.length > 100 || /[\r\n{}]/.test(content.actionLabel))) return "Use a link label up to 100 characters, without variables or line breaks.";

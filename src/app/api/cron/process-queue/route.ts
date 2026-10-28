@@ -17,6 +17,7 @@ const trigger = route(async (req: NextRequest) => {
         try {
             if (db.integrations.google?.refresh_token) decrypt(db.integrations.google.refresh_token);
             if (db.integrations.smtp?.password) decrypt(db.integrations.smtp.password);
+            for (const account of db.emailAccounts) if(account.is_active && account.password) decrypt(account.password);
         } catch { throw new RequestError("Saved provider credentials need the original encryption key.", 503, { code: "INTEGRATION_KEY_UNREADABLE" }); }
         if (db.integrations.google && (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET))
             throw new RequestError("Google OAuth configuration is incomplete.", 503, { code: "GOOGLE_NOT_CONFIGURED" });

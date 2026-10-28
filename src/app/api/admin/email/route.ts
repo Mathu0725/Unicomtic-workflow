@@ -5,12 +5,13 @@ import { getDb } from "@/lib/data/store";
 import { verifySmtpConnection, getDefaultSmtpConfig, SmtpConfig } from "@/lib/email/smtp-client";
 import { createGmailDraft } from "@/lib/email/gmail-drafts";
 import { ProviderError } from "@/lib/errors/provider-error";
+import { safeSmtpAccount } from "@/lib/email/accounts";
 
 async function handleGET() {
   const db = getDb();
   return NextResponse.json({
     success: true,
-    emailAccounts: db.emailAccounts,
+    emailAccounts: db.emailAccounts.map(safeSmtpAccount),
     emailJobs: db.emailJobs.slice(-50), // Last 50 jobs
   });
 }

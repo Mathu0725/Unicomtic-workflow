@@ -17,8 +17,17 @@ export default function EmailDeliveryActivity({
     [type, setType] = useState("email"),
     [search, setSearch] = useState(""),
     [page, setPage] = useState(1);
+  const [extra, setExtra] = useState({
+    from: "",
+    until: "",
+    form: "",
+    intake: "",
+    purpose: "",
+    account: "",
+    origin: "",
+  });
   const queue = useLiveData(
-    `/api/admin/notifications?${new URLSearchParams({ stage, status, type, search, page: String(page), revision: String(revision) })}`,
+    `/api/admin/notifications?${new URLSearchParams({ stage, status, type, search, ...extra, page: String(page), revision: String(revision) })}`,
     5000,
   );
   const filter = (setter: (value: string) => void, value: string) => {
@@ -32,7 +41,7 @@ export default function EmailDeliveryActivity({
     neutral: "bg-slate-100 text-slate-600",
   };
   return (
-    <section className={panelClass}>
+    <section id="delivery" className={panelClass}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="text-lg font-bold">Delivery activity</h2>
@@ -87,6 +96,7 @@ export default function EmailDeliveryActivity({
               ["sending", "Sending"],
               ["sent", "Sent"],
               ["uncertain", "Not confirmed"],
+              ["blocked", "Blocked"],
             ].map(([value, label]) => (
               <option key={value} value={value}>
                 {label}
@@ -110,12 +120,85 @@ export default function EmailDeliveryActivity({
           Find delivery
           <input
             className={`${inputClass} mt-1`}
-            placeholder="Name, email, reference or subject"
+            placeholder="Name, reference, subject, provider ID or batch"
             value={search}
             onChange={(event) => filter(setSearch, event.target.value)}
           />
         </label>
       </div>
+      <details className="rounded-xl border border-slate-200 p-3">
+        <summary className="cursor-pointer text-sm font-semibold">
+          More delivery filters
+        </summary>
+        <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {(
+            [
+              ["from", "From date"],
+              ["until", "Until date"],
+            ] as const
+          ).map(([key, label]) => (
+            <label key={key} className="text-xs font-semibold">
+              {label}
+              <input
+                type="date"
+                className={`${inputClass} mt-1`}
+                value={extra[key]}
+                onChange={(event) => {
+                  setExtra({ ...extra, [key]: event.target.value });
+                  setPage(1);
+                }}
+              />
+            </label>
+          ))}
+          {(
+            [
+              ["form", "Form", "forms"],
+              ["intake", "Intake", "intakes"],
+              ["account", "Sending account", "accounts"],
+              ["purpose", "Email purpose", "purposes"],
+            ] as const
+          ).map(([key, label, source]) => (
+            <label key={key} className="text-xs font-semibold">
+              {label}
+              <select
+                className={`${inputClass} mt-1`}
+                value={extra[key]}
+                onChange={(event) => {
+                  setExtra({ ...extra, [key]: event.target.value });
+                  setPage(1);
+                }}
+              >
+                <option value="">All</option>
+                {queue.data?.filters?.[source].map((item: any) => (
+                  <option
+                    key={typeof item === "string" ? item : item.id}
+                    value={typeof item === "string" ? item : item.id}
+                  >
+                    {typeof item === "string"
+                      ? item.replaceAll("_", " ")
+                      : item.title || item.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ))}
+          <label className="text-xs font-semibold">
+            Message origin
+            <select
+              className={`${inputClass} mt-1`}
+              value={extra.origin}
+              onChange={(event) => {
+                setExtra({ ...extra, origin: event.target.value });
+                setPage(1);
+              }}
+            >
+              <option value="">All</option>
+              <option value="manual">Manual / admin test</option>
+              <option value="automatic">Automatic</option>
+            </select>
+          </label>
+        </div>
+      </details>
       <div className="overflow-x-auto">
         <table className="w-full text-xs text-left">
           <thead className="bg-slate-50">
@@ -169,6 +252,17 @@ export default function EmailDeliveryActivity({
                     {job.type === "email" && (
                       <span className="mt-1 block text-slate-400">
                         {job.emailKind}
+                        <span className="block">{job.accountName}</span>
+                        <span className="block">
+                          {job.manual ? "Manual" : "Automatic"}
+                          {job.initiated_by ? ` · ${job.initiated_by}` : ""}
+                        </span>
+                        {job.payload.templateId && (
+                          <span className="block break-all">
+                            Template: {job.payload.templateId} ·{" "}
+                            {job.payload.templateVersion ?? "legacy"}
+                          </span>
+                        )}
                       </span>
                     )}
                     {job.type === "sheet" && (
@@ -228,6 +322,25 @@ export default function EmailDeliveryActivity({
                         {job.error_code}
                       </p>
                     )}
+                    {job.delivery_attempts?.length > 0 && (
+                      <details className="mt-2">
+                        <summary className="cursor-pointer text-xs text-slate-600">
+                          Attempt history
+                        </summary>
+                        {job.delivery_attempts.map(
+                          (attempt: any, index: number) => (
+                            <p
+                              key={index}
+                              className="mt-1 text-[10px] text-slate-500"
+                            >
+                              {attempt.account_id} · {attempt.outcome} ·{" "}
+                              {attempt.code || attempt.provider_id || ""} ·{" "}
+                              {new Date(attempt.at).toLocaleString()}
+                            </p>
+                          ),
+                        )}
+                      </details>
+                    )}
                     <p className="mt-1 break-all text-[10px] text-slate-400">
                       Job: {job.id}
                     </p>
@@ -238,6 +351,27 @@ export default function EmailDeliveryActivity({
                     ).toLocaleString()}
                   </td>
                   <td className="p-3">
+                    {job.status === "uncertain" && (
+                      <button
+                        type="button"
+                        className="mb-3 block text-xs font-semibold text-emerald-700"
+                        disabled={busy}
+                        onClick={() => {
+                          const providerId = prompt(
+                            "Only if Sent / SMTP logs confirm acceptance: enter the matching provider message ID. This records acceptance without resending.",
+                          );
+                          if (providerId?.trim())
+                            void run("/api/admin/notifications", {
+                              action: "reconcile_accepted",
+                              jobId: job.id,
+                              providerId: providerId.trim(),
+                              confirmProviderChecked: true,
+                            });
+                        }}
+                      >
+                        Record verified acceptance
+                      </button>
+                    )}
                     {["failed", "uncertain", "blocked"].includes(job.status) &&
                       ![
                         "DECISION_SUPERSEDED",

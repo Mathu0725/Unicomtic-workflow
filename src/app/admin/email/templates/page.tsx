@@ -47,6 +47,7 @@ const endpoint = "/api/admin/email/templates";
 
 export default function EmailTemplatesPage() {
   const [view, setView] = useState<"templates" | "routing">("routing");
+  useEffect(() => { if (new URLSearchParams(window.location.search).get("view") === "templates") setView("templates"); }, []);
   const [routingDirty, setRoutingDirty] = useState(false);
   const [entries, setEntries] = useState<Entry[]>([]),
     [selectedKey, setSelectedKey] = useState("");
