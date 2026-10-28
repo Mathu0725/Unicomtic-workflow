@@ -23,6 +23,7 @@ import FormRichText from "@/components/form-rich-text";
 import type { FormField } from "@/lib/data/store";
 import { emailValidationMessage } from "@/lib/validations/email";
 import CandidateAccessGate from "@/components/candidate-access-gate";
+import { formRequiresCandidateAccess } from "@/lib/forms/access";
 import { CheckCircle2, AlertCircle, Loader2, Check } from "lucide-react";
 
 export default function PublicCustomFormPage() {
@@ -594,7 +595,7 @@ export default function PublicCustomFormPage() {
       </div>
     </div>
   );
-  return ["application", "workshop_rsvp"].includes(form.type) ? (
+  return formRequiresCandidateAccess(form) ? (
     <CandidateAccessGate purpose="apply" formSlug={slug}>
       {content}
     </CandidateAccessGate>

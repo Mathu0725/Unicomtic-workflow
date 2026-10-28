@@ -162,6 +162,19 @@ export const PATCH = route(
     )
       throw new RequestError("Choose workshops from this form's intake.");
     if (
+      parsed.data.email_automation?.invitation_form_id &&
+      (form.type !== "registration" ||
+        !getDb().customForms.some(
+          (target) =>
+            target.id === parsed.data.email_automation!.invitation_form_id &&
+            target.type === "application" &&
+            target.campaign_id === form.campaign_id,
+        ))
+    )
+      throw new RequestError(
+        "Choose an application form from this intake for the follow-up email link.",
+      );
+    if (
       parsed.data.expectedUpdatedAt &&
       parsed.data.expectedUpdatedAt !== form.updated_at
     )

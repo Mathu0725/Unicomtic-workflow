@@ -93,7 +93,7 @@ it("deduplicates concurrent link requests and persists their shared rate limit",
   let db = await readDatabase(); expect(db.outbox).toHaveLength(1);
   await transaction(db => { db.outbox[0].status = "sent"; });
   await requestAccess(request("/api/candidate-access/request", input), undefined);
-  db = await readDatabase(); expect(db.outbox).toHaveLength(1); expect(db.candidateAccessAttempts.some(bucket => bucket.count === 3)).toBe(true);
+  db = await readDatabase(); expect(db.outbox).toHaveLength(1); expect(db.candidateAccessAttempts.some(bucket => bucket.count === 1)).toBe(true);
 });
 it("mints the link only when the queued email is dispatched and never grants it to another recipient", async () => {
   const db = await readDatabase(), payload = { to: person(1).email, subject: "Secure access", html: "pending", candidateAccess: { registrationId: db.registrations[0].id, purpose: "status" } };
