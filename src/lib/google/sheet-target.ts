@@ -7,6 +7,7 @@ export function formSheetTarget(
   type = form?.type === "application" ? "applications" : "registrations",
 ) {
   const override = form?.google_sheets_config;
+  if (override?.disabled) return null;
   const applications = type === "applications";
   const sheetId = override?.enabled
     ? override.sheet_id

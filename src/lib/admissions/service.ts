@@ -9,6 +9,7 @@ import { formSheetTarget } from "../google/sheet-target";
 import { documentAnswer, documentUrl, type DocumentUpload } from "../documents/receipts";
 import { emailValidationMessage } from "../validations/email";
 import { admissionEmailVariables, renderNotification, savedTemplate } from "../email/notification-templates";
+import { extraAnswerProblem, formAvailabilityProblem, uniqueAnswer, visibleFormFields } from "../forms/field-rules";
 export const escaped = (value: any) => String(value ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
 export const normalizeEmail = (value: any) => String(value || "").trim().toLowerCase();
 export const normalizeNic = (value: any) => String(value || "").replace(/\s/g, "").toUpperCase();
@@ -116,7 +117,7 @@ export function notifySubmission(student: Student, reg: Registration, app?: Appl
     const candidateContext = { stage: app ? "application" : "registration", recordId: app?.id || reg.id, registrationId: reg.id, applicationId: app?.id, studentId: student.id, reference: ref };
     if (!form || (form.email_automation.enabled && form.email_automation.send_applicant_email))
         enqueue(db, "email", `submission:${sub?.id || app?.id || reg.id}:applicant`, { to: student.email, toName: student.full_name, subject, html, templateId: form?.email_automation.enabled ? `form:${form.id}:applicant` : templateId, sourceId: sub?.id, candidateContext });
-    const recipients = new Set([db.integrations.admin_notification_email || db.integrations.google?.email, ...(form?.email_automation.enabled && form.email_automation.send_admin_notification ? form.email_automation.admin_emails : [])].filter(Boolean));
+    const recipients = new Set((!form || form.email_automation.enabled && form.email_automation.send_admin_notification ? [db.integrations.admin_notification_email || db.integrations.google?.email, ...(form?.email_automation.admin_emails || [])] : []).filter(Boolean));
     let adminMessage = renderNotification(db, "admin_submission", vars);
     if (form?.email_automation.enabled && form.email_automation.send_admin_notification) {
         const rendered = renderEmailTemplate(form.email_automation.admin_subject || adminMessage.subject, form.email_automation.admin_body_html || adminMessage.html, null, vars);
@@ -136,16 +137,18 @@ export function submitCustomForm(form: CustomForm, input: Record<string, any>, o
     verifiedStudentId?: string;
 } = {}) {
     const db = getDb();
-    if (!form.is_active)
-        throw new RequestError("This form is closed.", 403);
     if (options.externalId) {
         const existing = db.formSubmissions.find(s => s.form_id === form.id && s.external_id === options.externalId);
         if (existing)
             return { submission: existing, duplicate: true };
     }
-    const data: Record<string, any> = Object.fromEntries(form.fields.map(field => [field.id, input[field.id]])), errors: Record<string, string> = {};
+    const unavailable = formAvailabilityProblem(form, db.formSubmissions.filter(sub => sub.form_id === form.id).length);
+    if (unavailable) throw new RequestError(unavailable, 403);
+    const visible = visibleFormFields(form.fields, input);
+    const activeFields = form.fields.filter(field => visible.has(field.id) && field.type !== "section");
+    const data: Record<string, any> = Object.fromEntries(activeFields.map(field => [field.id, input[field.id]])), errors: Record<string, string> = {};
     const documents = new Map<string, DocumentUpload>();
-    for (const field of form.fields) {
+    for (const field of activeFields) {
         const value = data[field.id];
         if (field.type === "file" && value) {
             const upload = documentAnswer(form, field, value);
@@ -179,6 +182,9 @@ export function submitCustomForm(form: CustomForm, input: Record<string, any>, o
         if (value !== undefined && value !== null && value !== "" && field.type === "number" && !Number.isFinite(Number(value))) errors[field.id] = "Enter a finite number.";
         if (value && field.type === "date" && !Number.isFinite(Date.parse(String(value)))) errors[field.id] = "Enter a valid date.";
         if (Array.isArray(value) && field.options?.length && value.some(item => !field.options!.includes(item))) errors[field.id] = "Select valid options.";
+        const extraProblem = extraAnswerProblem(field, value);
+        if (extraProblem) errors[field.id] = extraProblem;
+        if (field.unique && uniqueAnswer(value) && db.formSubmissions.some(sub => sub.form_id === form.id && uniqueAnswer(sub.data[field.id]) === uniqueAnswer(value))) errors[field.id] = "This information has already been used for a submission. Check your details or contact admissions.";
     }
     if (Object.keys(errors).length)
         throw new RequestError("Please correct the highlighted fields.", 400, { errors });
@@ -189,7 +195,7 @@ export function submitCustomForm(form: CustomForm, input: Record<string, any>, o
         throw new RequestError("You have already submitted this form.", 409, { isDuplicate: true, referenceNo: reg.reference_no });
     const app = form.type === "application" ? applicationFor(student, reg, data) : undefined;
     const booking = bookWorkshop(options.workshopId, student, reg, form.workshop_config);
-    const submission: FormSubmission = { id: randomUUID(), form_id: form.id, form_version: form.updated_at, accepted_declarations: form.fields.filter(f => f.type === "terms" && data[f.id] === true).map(f => ({ fieldId: f.id, label: f.label })), reference_no: app?.application_no || reg.reference_no, data, student_id: student.id, registration_id: reg.id, application_id: app?.id, workshop_id: booking?.workshop_id, external_id: options.externalId, synced_to_sheet: false, email_sent: false, created_at: now() };
+    const submission: FormSubmission = { id: randomUUID(), form_id: form.id, form_version: form.updated_at, field_labels: Object.fromEntries(activeFields.map(field => [field.id, field.label])), accepted_declarations: activeFields.filter(f => f.type === "terms" && data[f.id] === true).map(f => ({ fieldId: f.id, label: f.label })), reference_no: app?.application_no || reg.reference_no, data, student_id: student.id, registration_id: reg.id, application_id: app?.id, workshop_id: booking?.workshop_id, external_id: options.externalId, synced_to_sheet: false, email_sent: false, created_at: now() };
     db.formSubmissions.push(submission);
     for (const [fieldId, upload] of documents) {
         upload.submission_id = submission.id;

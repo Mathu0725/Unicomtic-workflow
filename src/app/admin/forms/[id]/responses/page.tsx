@@ -2,7 +2,9 @@
 import { apiResponse } from "@/lib/client/api";
 import { Notice as RequestNotice } from "@/components/live-data";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { fetchWithTimeout, readJson, responseError } from "@/lib/client/api";
+import FormResponseDetails from "@/components/form-response-details";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { 
@@ -33,30 +35,37 @@ export default function FormResponsesPage() {
   const [syncing, setSyncing] = useState(false);
   const [syncingGoogleForm, setSyncingGoogleForm] = useState(false);
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1), [total, setTotal] = useState(0), [syncFilter, setSyncFilter] = useState("all"), [fromDate, setFromDate] = useState(""), [toDate, setToDate] = useState("");
+  const [stats, setStats] = useState({ total: 0, synced: 0, emails: 0 }), [googleFormEnabled, setGoogleFormEnabled] = useState(false), [selectedResponse, setSelectedResponse] = useState<any>(null);
   const [banner, setBanner] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
-  const fetchResponses = async () => {
+  const fetchResponses = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
     try {
       setPageError("");
-      const res = await apiResponse(`/api/admin/forms/${formId}/responses`);
+      const query = new URLSearchParams({ page: String(page), pageSize: "25", search, status: syncFilter, ...(fromDate ? { from: fromDate } : {}), ...(toDate ? { to: toDate } : {}) });
+      const res = await apiResponse(`/api/admin/forms/${formId}/responses?${query}`, { signal });
       const data = await res.json();
       if (data.success) {
         setFormTitle(data.formTitle);
-        setFields(data.fields || []);
+        setFields((data.fields || []).filter((field: any) => field.type !== "section"));
         setSubmissions(data.submissions || []);
         setGoogleSheetsConfig(data.googleSheetsConfig || null);
+        setTotal(data.total); setStats(data.stats); setPage(data.page); setGoogleFormEnabled(Boolean(data.googleFormConfig?.enabled));
       }
     } catch (e) {
+      if (signal?.aborted) return;
       setPageError(e instanceof Error ? e.message : "Could not load or save this data. Please try again.");
     } finally {
-      setLoading(false);
+      if (!signal?.aborted) setLoading(false);
     }
-  };
+  }, [formId, page, search, syncFilter, fromDate, toDate]);
 
   useEffect(() => {
-    fetchResponses();
-  }, [formId]);
+    const controller = new AbortController();
+    const timer = setTimeout(() => void fetchResponses(controller.signal), 250);
+    return () => { clearTimeout(timer); controller.abort(); };
+  }, [fetchResponses]);
 
   const handleSyncToSheets = async () => {
     setSyncing(true);
@@ -104,36 +113,16 @@ export default function FormResponsesPage() {
     }
   };
 
-  const exportCSV = () => {
-    if (submissions.length === 0) return;
-    const headerCols = ["Reference No", "Submitted Date", ...fields.map((f) => f.label)];
-    const rows = submissions.map((sub) => {
-      const dateStr = new Date(sub.created_at).toLocaleString();
-      const fieldVals = fields.map((f) => {
-        const val = sub.data[f.id] !== undefined ? String(sub.data[f.id]) : "";
-        return `"${val.replace(/"/g, '""')}"`;
-      });
-      return [sub.reference_no, `"${dateStr}"`, ...fieldVals];
-    });
-
-    const csvContent = "data:text/csv;charset=utf-8," + [headerCols.join(","), ...rows.map((r) => r.join(","))].join("\n");
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `${formTitle.replace(/[^a-z0-9]/gi, "_").toLowerCase()}_responses_${Date.now()}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  const exportCSV = async () => {
+    try {
+      const query = new URLSearchParams({ export: "csv", search, status: syncFilter, ...(fromDate ? { from: fromDate } : {}), ...(toDate ? { to: toDate } : {}) });
+      const response = await fetchWithTimeout(`/api/admin/forms/${formId}/responses?${query}`);
+      if (!response.ok) throw responseError(response, await readJson(response));
+      const url = URL.createObjectURL(await response.blob()), link = document.createElement("a");
+      link.href = url; link.download = `${formTitle.replace(/[^a-z0-9]/gi, "_")}_responses.csv`; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (error) { setPageError(error instanceof Error ? error.message : "Could not export responses."); }
   };
-
-  const filteredSubmissions = submissions.filter((sub) => {
-    if (!search.trim()) return true;
-    const cleanSearch = search.toLowerCase();
-    if (sub.reference_no.toLowerCase().includes(cleanSearch)) return true;
-    return Object.values(sub.data).some((val) =>
-      String(val).toLowerCase().includes(cleanSearch)
-    );
-  });
+  const filteredSubmissions = submissions;
 
   return (
     <div className="space-y-6">
@@ -183,7 +172,7 @@ export default function FormResponsesPage() {
 
           <button
             onClick={handleSyncFromGoogleForm}
-            disabled={syncingGoogleForm}
+            disabled={syncingGoogleForm || !googleFormEnabled}
             className="px-3.5 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs shadow transition flex items-center gap-1.5 cursor-pointer disabled:bg-purple-400"
             title="Pull latest responses from connected Google Form"
           >
@@ -193,7 +182,7 @@ export default function FormResponsesPage() {
 
           <button
             onClick={handleSyncToSheets}
-            disabled={syncing}
+            disabled={syncing || !googleSheetsConfig}
             className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow transition flex items-center gap-1.5 cursor-pointer disabled:bg-emerald-400"
           >
             {syncing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCw className="w-3.5 h-3.5" />}
@@ -240,20 +229,20 @@ export default function FormResponsesPage() {
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm text-xs">
           <span className="text-slate-400 font-semibold block">Total Submissions</span>
-          <span className="text-2xl font-extrabold text-slate-900">{submissions.length}</span>
+          <span className="text-2xl font-extrabold text-slate-900">{stats.total}</span>
         </div>
 
         <div className="bg-white p-5 rounded-2xl border border-emerald-200 bg-emerald-50/20 shadow-sm text-xs">
           <span className="text-emerald-700 font-semibold block">Synced to Google Sheet</span>
           <span className="text-2xl font-extrabold text-emerald-800">
-            {submissions.filter((s) => s.synced_to_sheet).length} of {submissions.length}
+            {stats.synced} of {stats.total}
           </span>
         </div>
 
         <div className="bg-white p-5 rounded-2xl border border-blue-200 bg-blue-50/20 shadow-sm text-xs">
           <span className="text-blue-700 font-semibold block">Automated Confirmation Emails</span>
           <span className="text-2xl font-extrabold text-blue-800">
-            {submissions.filter((s) => s.email_sent).length} Dispatched
+            {stats.emails} Dispatched
           </span>
         </div>
       </div>
@@ -264,12 +253,15 @@ export default function FormResponsesPage() {
           <input
             type="text"
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+            maxLength={200}
+            aria-label="Search responses"
             placeholder="Search responses by name, email, phone, reference number..."
             className="w-full pl-9 pr-4 py-2 text-xs rounded-xl border border-slate-300 focus:ring-2 focus:ring-blue-500 focus:outline-none"
           />
           <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
         </div>
+        <div className="mt-3 flex flex-wrap gap-3 text-xs"><label className="text-slate-500">Sheet status<select value={syncFilter} onChange={event => { setSyncFilter(event.target.value); setPage(1); }} className="ml-2 rounded-lg border border-slate-300 p-2 text-slate-800"><option value="all">All responses</option><option value="synced">Synced</option><option value="pending">Not yet synced</option></select></label><label className="text-slate-500">From<input type="date" value={fromDate} onChange={event => { setFromDate(event.target.value); setPage(1); }} className="ml-2 rounded-lg border border-slate-300 p-2 text-slate-800" /></label><label className="text-slate-500">To<input type="date" value={toDate} onChange={event => { setToDate(event.target.value); setPage(1); }} className="ml-2 rounded-lg border border-slate-300 p-2 text-slate-800" /></label></div>
       </div>
 
       {/* Responses Data Table */}
@@ -308,7 +300,7 @@ export default function FormResponsesPage() {
                 filteredSubmissions.map((sub) => (
                   <tr key={sub.id} className="hover:bg-slate-50 transition">
                     <td className="p-3.5 font-mono font-bold text-blue-700">
-                      {sub.reference_no}
+                      <button type="button" onClick={() => setSelectedResponse(sub)} className="text-left underline decoration-blue-200 underline-offset-4">{sub.reference_no}</button>
                     </td>
                     <td className="p-3.5 text-slate-400 text-[11px] whitespace-nowrap">
                       {new Date(sub.created_at).toLocaleDateString()}
@@ -346,6 +338,8 @@ export default function FormResponsesPage() {
           </table>
         </div>
       </div>
+      <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-slate-500"><span>{total ? (page - 1) * 25 + 1 : 0}–{Math.min(page * 25, total)} of {total} matching responses</span><div className="flex items-center gap-3"><button type="button" disabled={page <= 1 || loading} onClick={() => setPage(current => current - 1)} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-700 disabled:opacity-40">Previous</button><span>Page {page} of {Math.max(1, Math.ceil(total / 25))}</span><button type="button" disabled={page * 25 >= total || loading} onClick={() => setPage(current => current + 1)} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-700 disabled:opacity-40">Next</button></div></div>
+      {selectedResponse && <FormResponseDetails submission={selectedResponse} fields={fields} onClose={() => setSelectedResponse(null)} />}
     </div>
   );
 }

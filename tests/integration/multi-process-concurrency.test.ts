@@ -35,6 +35,7 @@ it("keeps capacity and identity checks atomic across four independent Node proce
             child.on("exit", code => { if (!done) reject(new Error(`Submit process exited ${code}: ${errors}`)); });
         }));
         const results = (await Promise.all(work)).flat();
+        expect(results.filter(result => result !== "accepted" && result !== "full")).toEqual([]);
         expect(results.filter(r => r === "accepted")).toHaveLength(10);
         expect(results.filter(r => r === "full")).toHaveLength(50);
         const db = await readDatabase();
