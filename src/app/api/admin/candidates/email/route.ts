@@ -6,6 +6,7 @@ import { getDb } from "@/lib/data/store";
 import { getSession } from "@/lib/security/session";
 import { candidateEmailSchema } from "@/lib/validations/email";
 import { emailCandidateResolver } from "@/lib/email/candidates";
+import { queueWorkshopBooking } from "@/lib/workshops/sheet-sync";
 export const dynamic = "force-dynamic";
 const schema = z.object({ studentId: z.string().min(1).max(200), expectedEmail: z.string().max(500), email: candidateEmailSchema }).strict();
 const normalized = (value: unknown) => String(value || "").trim().toLowerCase();
@@ -30,7 +31,8 @@ export const PATCH = route(async req => {
     if (db.interviewCandidates.some(candidate => candidate.student_id === studentId && job.key === `interview:${candidate.id}`)) return true;
     return [...references].some(reference => String(job.payload.subject || "").includes(reference));
   });
-  const affectedExports = db.outbox.filter(job => job.type === "sheet" && (submissionIds.has(job.payload.sourceId) || job.payload.rows?.some((row: any) => references.has(row.referenceNo))));
+  const bookingIds=new Set(db.workshopBookings.filter(booking=>booking.student_id===studentId).map(booking=>booking.id));
+  const affectedExports = db.outbox.filter(job => job.type === "sheet" && (bookingIds.has(job.payload.bookingId) || submissionIds.has(job.payload.sourceId) || job.payload.rows?.some((row: any) => references.has(row.referenceNo))));
   if ([...affectedEmails, ...affectedExports].some(job => job.status === "sending")) throw new RequestError("A message or export for this candidate is currently sending. Wait for it to finish, then refresh and save the correction.", 409);
   student.email = email;
   for (const submission of submissions) {
@@ -53,6 +55,7 @@ export const PATCH = route(async req => {
     job.error = "The candidate's email was corrected. Queue a fresh export from form responses or Sheets Synchronization.";
     job.next_attempt_at = undefined; pausedExports++;
   }
+  for(const bookingId of bookingIds)queueWorkshopBooking(db,bookingId);
   db.auditLogs.push({ id: randomUUID(), user_email: getSession(req)!.email, action: "CANDIDATE_EMAIL_CORRECTED", entity_name: "students", entity_id: studentId, changes: { previousEmail: previous, email, pausedEmails, pausedExports }, created_at: new Date().toISOString() });
   return NextResponse.json({ success: true, studentId, email, pausedEmails, pausedExports, message: `Candidate email updated.${pausedEmails ? ` ${pausedEmails} old-address email(s) paused for review.` : ""}${submissions.length || affectedExports.length ? " Re-export linked records to update connected Sheets." : ""}` });
 }, true, { submission: true });

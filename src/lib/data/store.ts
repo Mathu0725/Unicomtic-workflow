@@ -116,6 +116,7 @@ export interface Workshop {
   created_at: string;
   capacity?: number;
   booking_deadline?: string;
+  google_sheets_config?: { enabled: boolean; sheet_id: string; sheet_name: string; auto_sync: boolean; version: string; updated_at: string };
 }
 
 export interface AttendanceRecord {

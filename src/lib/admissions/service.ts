@@ -11,6 +11,7 @@ import { emailValidationMessage } from "../validations/email";
 import { admissionEmailVariables, renderNotification, savedTemplate } from "../email/notification-templates";
 import { formRequiresCandidateAccess } from "../forms/access";
 import { extraAnswerProblem, formAvailabilityProblem, uniqueAnswer, visibleFormFields } from "../forms/field-rules";
+import { queueWorkshopBooking } from "../workshops/sheet-sync";
 export const escaped = (value: any) => String(value ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
 export const normalizeEmail = (value: any) => String(value || "").trim().toLowerCase();
 export const normalizeNic = (value: any) => String(value || "").replace(/\s/g, "").toUpperCase();
@@ -63,6 +64,7 @@ export function applicationFor(student: Student, reg: Registration, data: Record
         throw new RequestError("Select an available program.");
     const app: Application = { id: randomUUID(), application_no: reference("APP"), registration_id: reg.id, student_id: student.id, campaign_id: reg.campaign_id, course_id: data.courseId, ol_results: { year: data.olYear || "", index_no: data.olIndexNo || "", maths: data.olMathsGrade || "", english: data.olEnglishGrade || "", science: data.olScienceGrade || "" }, al_results: { stream: data.alStream || "", year: data.alYear || "", index_no: data.alIndexNo || "", z_score: data.alZScore, summary: data.alResultsSummary || "" }, emergency_contact: { name: data.emergencyContactName || "", relation: data.emergencyContactRelation || "", phone: data.emergencyContactPhone || "" }, statement_of_purpose: data.statementOfPurpose || data.whySoftwareDev || "", status: "submitted", submitted_at: now(), created_at: now() };
     db.applications.push(app);
+    for(const booking of db.workshopBookings.filter(item=>item.registration_id===reg.id))queueWorkshopBooking(db,booking.id);
     reg.status = "applied";
     audit("APPLICATION_SUBMITTED", "applications", app.id, { applicationNo: app.application_no });
     return app;
@@ -86,12 +88,15 @@ export function bookWorkshop(workshopId: string | undefined, student: Student, r
     if (!workshop)
         throw new RequestError("This workshop is closed or unavailable.", 409, { code: "WORKSHOP_UNAVAILABLE", action: "refresh_workshops" });
     const existing = db.workshopBookings.find(b => b.workshop_id === workshopId && b.student_id === student.id && b.status === "confirmed");
-    if (existing)
+    if (existing) {
+        queueWorkshopBooking(db,existing.id);
         return existing;
+    }
     if (workshop.remaining !== null && workshop.remaining < 1)
         throw new RequestError("This workshop is full. Select another workshop.", 409, { code: "WORKSHOP_FULL", action: "refresh_workshops" });
     const booking = { id: randomUUID(), workshop_id: workshopId, student_id: student.id, registration_id: reg.id, status: "confirmed" as const, created_at: now() };
     db.workshopBookings.push(booking);
+    queueWorkshopBooking(db,booking.id);
     const when = new Date(workshop.start_time).toLocaleString("en-GB", { timeZone: "Asia/Colombo" });
     enqueue(db, "email", `booking:${booking.id}`, { to: student.email, toName: student.full_name, ...renderNotification(db, "workshop_booking", { ...admissionEmailVariables(db, student, reg), workshop: workshop.title, date: when, venue: workshop.venue, address: workshop.address }, workshop.google_maps_url || undefined) });
     return booking;

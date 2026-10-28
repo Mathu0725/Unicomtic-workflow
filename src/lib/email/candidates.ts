@@ -97,6 +97,7 @@ export function emailCandidateResolver(db: DatabaseStore) {
     db.formSubmissions.map((submission) => [submission.id, submission]),
   );
   return (job: OutboxJob): EmailCandidate | undefined => {
+    if(job.payload.bookingId){const booking=db.workshopBookings.find(item=>item.id===job.payload.bookingId);if(booking)return byId.get(booking.registration_id);}
     const context =
       job.payload.candidateMessage || job.payload.candidateContext;
     if (context) return byId.get(context.recordId);
