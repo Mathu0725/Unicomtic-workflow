@@ -5,6 +5,7 @@ import { getDb } from "@/lib/data/store";
 import { applicationPatchSchema } from "@/lib/validations/admin";
 import { RequestError } from "@/lib/http";
 import { getSession } from "@/lib/security/session";
+import { canChangeApplicationStatus } from "@/lib/admissions/application-review";
 
 async function handleGET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
@@ -42,7 +43,7 @@ async function handleGET(req: NextRequest) {
         i.studentName.toLowerCase().includes(search) ||
         i.application_no.toLowerCase().includes(search) ||
         i.registrationRef.toLowerCase().includes(search) ||
-        i.email.toLowerCase().includes(search)
+        i.email.toLowerCase().includes(search),
     );
   }
 
@@ -61,12 +62,27 @@ async function handlePATCH(req: NextRequest) {
 
     const application = db.applications.find((a) => a.id === id);
     if (!application) {
-      return NextResponse.json({ success: false, message: "Application not found" }, { status: 404 });
+      return NextResponse.json(
+        { success: false, message: "Application not found" },
+        { status: 404 },
+      );
     }
 
-    if (body.expectedStatus && body.expectedStatus !== application.status) throw new RequestError("This application changed. Reload before saving.", 409);
-    const transitions: Record<string, string[]> = { invited: ["started", "withdrawn"], started: ["submitted", "withdrawn"], submitted: ["under_review", "approved", "rejected", "withdrawn"], under_review: ["approved", "rejected", "withdrawn"], approved: ["under_review", "withdrawn"], rejected: ["under_review"], withdrawn: ["under_review"] };
-    if (status && status !== application.status && !transitions[application.status]?.includes(status)) throw new RequestError("This application status change is not allowed.", 409, { code: "INVALID_TRANSITION" });
+    if (body.expectedStatus && body.expectedStatus !== application.status)
+      throw new RequestError(
+        "This application changed. Reload before saving.",
+        409,
+      );
+    if (
+      status &&
+      status !== application.status &&
+      !canChangeApplicationStatus(application.status, status)
+    )
+      throw new RequestError(
+        "This application status change is not allowed.",
+        409,
+        { code: "INVALID_TRANSITION" },
+      );
     if (status) application.status = status;
     if (review_notes !== undefined) application.review_notes = review_notes;
 
