@@ -7,6 +7,8 @@ import { requireCandidateAccess } from "@/lib/security/candidate-access";
 import { documentAnswer } from "@/lib/documents/receipts";
 import { findPublicForm } from "@/lib/forms/public-links";
 import { resolveFormMessageDisplay, resolveFormMessages } from "@/lib/forms/messages";
+import { cleanRichText } from "@/lib/forms/rich-text";
+import { formAvailabilityProblem } from "@/lib/forms/field-rules";
 export const dynamic = "force-dynamic";
 export const GET = route(async (req, { params }: {
     params: {
@@ -14,11 +16,11 @@ export const GET = route(async (req, { params }: {
     };
 }) => {
     const form = findPublicForm(getDb(), params.slug);
-    if (!form || !form.is_active)
+    if (!form || formAvailabilityProblem(form))
         throw new RequestError("This form is unavailable or closed.", 404);
     const documents = getDb().integrations.drive_documents;
     const documentUploadsReady = hasDriveAccess() && documents?.ready && documents.google_email === getDb().integrations.google?.email;
-    return NextResponse.json({ success: true, form: { id: form.id, version: form.updated_at, slug: form.slug, title: form.title, description: form.description, messages: resolveFormMessages(form.messages), message_display: resolveFormMessageDisplay(form.message_display), type: form.type, fields: form.fields, documentUploadsReady: Boolean(documentUploadsReady), confirmationMessage: form.confirmation_message, workshops: form.workshop_config?.enabled ? availableWorkshops(form.campaign_id, form.workshop_config.workshop_ids) : [], workshopRequired: form.workshop_config?.enabled && form.workshop_config.required, workshopEnabled: form.workshop_config?.enabled, googleFormConfig: { enabled: form.google_form_config?.enabled, formUrl: form.google_form_config?.form_url, responseMode: form.google_form_config?.response_mode } } }, { headers: { "Cache-Control": "no-store" } });
+    return NextResponse.json({ success: true, form: { id: form.id, version: form.updated_at, slug: form.slug, title: form.title, description: form.description, description_rich: form.description_rich ? cleanRichText(form.description_rich) : undefined, messages: resolveFormMessages(form.messages), message_display: resolveFormMessageDisplay(form.message_display), type: form.type, fields: form.fields, documentUploadsReady: Boolean(documentUploadsReady), confirmationMessage: form.confirmation_message, workshops: form.workshop_config?.enabled ? availableWorkshops(form.campaign_id, form.workshop_config.workshop_ids) : [], workshopRequired: form.workshop_config?.enabled && form.workshop_config.required, workshopEnabled: form.workshop_config?.enabled, googleFormConfig: { enabled: form.google_form_config?.enabled, formUrl: form.google_form_config?.form_url, responseMode: form.google_form_config?.response_mode } } }, { headers: { "Cache-Control": "no-store" } });
 });
 export const POST = route(async (req, { params }: {
     params: {
@@ -41,7 +43,7 @@ export const POST = route(async (req, { params }: {
     }
     const result = submitCustomForm(form, body.data, { workshopId: body.workshopId, verifiedStudentId: access?.student.id });
     if (["application", "workshop_rsvp"].includes(form.type) && result.submission.student_id !== requireCandidateAccess(getDb(), req).student.id) throw new RequestError("Use the details of the candidate verified by this email link.", 403);
-    return NextResponse.json({ success: true, referenceNo: result.submission.reference_no, trackingReference: result.trackingReference, message: "Your response is saved. Email and Google Sheets updates are queued and tracked.", redirectUrl: form.redirect_url || null });
+    return NextResponse.json({ success: true, referenceNo: result.submission.reference_no, trackingReference: result.trackingReference, message: "Your response is saved. Email and Google Sheets updates are queued and tracked.", confirmationMessage: form.confirmation_message, redirectUrl: form.redirect_url || null });
 }, false, { submission: true, authorize: (req, { params }, db) => {
     const form = findPublicForm(db, params.slug);
     if (form && ["application", "workshop_rsvp"].includes(form.type)) {

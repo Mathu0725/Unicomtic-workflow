@@ -9,6 +9,7 @@ import { getSession } from "@/lib/security/session";
 export const dynamic = "force-dynamic";
 export const GET = route(async req => {
     const db = getDb();
+    if (req.nextUrl.searchParams.get("summary") === "1") return NextResponse.json({ success: true, workshops: db.workshops.map(workshop => ({ ...workshop, bookedCount: db.workshopBookings.filter(booking => booking.workshop_id === workshop.id && booking.status === "confirmed").length })) });
     return NextResponse.json({ success: true, canManageReminders: ["admin", "super_admin"].includes(getSession(req)!.role), workshops: db.workshops.map(w => ({ ...w, campaignTitle: db.campaigns.find(c => c.id === w.campaign_id)?.title, totalAttended: db.attendance.filter(a => a.workshop_id === w.id && ["attended", "late"].includes(a.status)).length, bookings: db.workshopBookings.filter(b => b.workshop_id === w.id && b.status === "confirmed").map(b => { const s = db.students.find(s => s.id === b.student_id); return { ...b, studentName: s?.full_name, email: s?.email, referenceNo: db.registrations.find(r => r.id === b.registration_id)?.reference_no }; }) })) });
 }, true);
 export const POST = route(async (req) => {

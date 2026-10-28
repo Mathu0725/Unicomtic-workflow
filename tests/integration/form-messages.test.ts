@@ -173,6 +173,9 @@ it("copies custom messages when duplicating a form and keeps later edits indepen
   expect(duplicated.status).toBe(200); const copy = (await duplicated.json()).form;
   expect(copy.messages.popupTitle).toBe("Original custom title");
   expect(copy.message_display).toEqual({ popup_enabled: false, bottom_messages_enabled: false });
+  expect(copy.is_active).toBe(false);
+  expect(copy.status).toBe("draft");
+  await PATCH(request({ is_active: true }, "super_admin", `/api/admin/forms/${copy.id}`), { params: { id: copy.id } });
   await save({ popupTitle: "Copied form only" }, copy.id);
   await saveDisplay({ popup_enabled: true }, copy.id);
   expect((await publicCopy(copy.id)).messages.popupTitle).toBe("Copied form only"); expect((await publicCopy()).messages.popupTitle).toBe("Original custom title");

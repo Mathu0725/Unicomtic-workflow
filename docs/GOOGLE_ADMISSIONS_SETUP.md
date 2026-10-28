@@ -67,7 +67,7 @@ Click **Verify saved SMTP connection**, then send a test notification. Blank pas
 
 1. Open **Workshops → Plan workshop**. Select the intake and enter title, venue/address, future start/end, capacity and optional booking deadline/Google Maps URL. Times are entered in the browser's local timezone and saved in UTC.
 2. Open **Forms Studio → Create New Form**. Choose Registration, Application or Workshop RSVP; enable **Require workshop selection** if wanted.
-3. In **Builder → Workshop choices**, enable booking, choose whether it is mandatory, and choose allowed workshops. Selecting none means all available workshops for the same intake. Save Form.
+3. In **Builder → Settings → Workshops**, enable booking, choose whether it is mandatory, and choose allowed workshops. Selecting none means all available workshops for the same intake. Publish or Update form.
 4. Keep name, email, NIC and phone fields. Existing canonical field IDs work directly; newly designed questions can use Identity mapping in Builder.
 5. Share the public form URL. Students select a workshop and submit. Closed/past/deadline-expired workshops are excluded. The server checks capacity before committing a booking; a rejected booking does not leave a partial student/application behind.
 6. Dashboard shows actual registration/application totals, today's applications, form response counts and workshop booking totals. Workshops lists booked students. Students can use their registration or application reference on `/status` to view their progress, bookings and notification state.
@@ -86,7 +86,7 @@ Personal Gmail can block sending above 500 emails per day. With one applicant co
 
 ## 7. Existing external Google Forms (optional)
 
-In Builder enable Google Form, save its public URL, response spreadsheet URL and tab. **Save Form**, then copy the generated Apps Script, paste it in the Google Form's Apps Script project and add an installable On form submit trigger. The script sends a stable responseId and webhook secret. Google question titles must match the portal question labels or IDs; use a `workshopId` answer carrying the portal workshop UUID when booking from an external form. Using the native portal form is the easiest way to display current capacity automatically.
+In **Builder → Integrations → Import from an external Google Form**, enable Google Form, save its public URL, response spreadsheet URL and tab. **Publish form / Update form**, then copy the generated Apps Script, paste it in the Google Form's Apps Script project and add an installable On form submit trigger. The script sends a stable responseId and webhook secret. Google question titles must match the portal question labels or IDs; use a `workshopId` answer carrying the portal workshop UUID when booking from an external form. Using the native portal form is the easiest way to display current capacity automatically.
 
 External Google Forms webhooks require a publicly reachable HTTPS portal; Google cannot send webhooks to your localhost server. Gmail sending and Sheets exports can be tested locally after OAuth setup.
 

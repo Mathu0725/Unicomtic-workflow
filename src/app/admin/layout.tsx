@@ -162,7 +162,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
       {/* Main Content Area */}
       <main id="admin-page-content" aria-label="Admin page content" tabIndex={-1} className="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain">
-        <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
+        <div className={/^\/admin\/forms\/[^/]+\/builder$/.test(pathname) ? "p-3 sm:p-5" : "p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto"}>
           <Notice error>{sessionError}</Notice>
           {settingsSection && (
             <nav aria-label="Settings breadcrumb" className="mb-6 flex flex-wrap items-center gap-2 text-sm">

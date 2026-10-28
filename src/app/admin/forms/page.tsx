@@ -92,7 +92,7 @@ export default function AdminFormsPage() {
       if (data.success) {
         setBanner({
           type: "success",
-          message: `Form successfully cloned! '${data.form.title}' is ready with all fields, Google Sheet, and email automations.`,
+          message: `“${data.form.title}” copied as a draft. Review email settings and configure its spreadsheet before publishing.`,
         });
         fetchForms();
       } else {

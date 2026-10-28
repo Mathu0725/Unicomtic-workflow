@@ -11,6 +11,8 @@ import type { Integrations, OutboxJob, WorkshopBooking, SubmissionReceipt, Queue
 import { defaultSettings } from "../settings";
 import type { NotificationTemplateId, SavedEmailTemplate } from "../email/template-catalog";
 import type { FormMessageDisplay, FormMessages } from "../forms/messages";
+import type { RichTextNode } from "../forms/rich-text";
+import type { FormEditorDraft } from "../forms/editor";
 
 export interface Campaign {
   id: string;
@@ -251,6 +253,10 @@ export interface FormField {
     | "date"
     | "file"
     | "number"
+    | "url"
+    | "time"
+    | "datetime"
+    | "section"
     | "terms";
   label: string;
   placeholder?: string;
@@ -259,6 +265,15 @@ export interface FormField {
   options?: string[]; // for select, radio, checkbox
   defaultValue?: any;
   systemKey?: string;
+  minLength?: number;
+  maxLength?: number;
+  min?: number;
+  max?: number;
+  minSelections?: number;
+  maxSelections?: number;
+  unique?: boolean;
+  width?: "full" | "half";
+  visibility?: { field_id: string; operator: "equals" | "not_equals" | "contains" | "empty" | "not_empty" | "greater" | "less"; value?: string };
 }
 
 export interface GoogleFormConfig {
@@ -281,6 +296,12 @@ export interface CustomForm {
   message_display?: Partial<FormMessageDisplay>;
   title: string;
   description: string;
+  description_rich?: RichTextNode;
+  status?: "draft" | "published" | "paused" | "closed";
+  editor_draft?: FormEditorDraft;
+  starts_at?: string;
+  closes_at?: string;
+  submission_limit?: number;
   type: "registration" | "application" | "workshop_rsvp" | "custom";
   campaign_id?: string;
   is_active: boolean;
@@ -288,6 +309,7 @@ export interface CustomForm {
   google_form_config?: GoogleFormConfig;
   google_sheets_config: {
     enabled: boolean;
+    disabled?: boolean;
     sheet_id: string;
     sheet_name: string;
     auto_sync: boolean;
@@ -326,6 +348,7 @@ export interface FormSubmission {
   workshop_id?: string;
   external_id?: string;
   form_version?: string;
+  field_labels?: Record<string, string>;
   accepted_declarations?: { fieldId: string; label: string }[];
 }
 
