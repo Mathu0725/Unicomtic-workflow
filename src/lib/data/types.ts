@@ -4,6 +4,7 @@ export interface Integrations {
     registration_sheet_id?: string;
     application_sheet_id?: string;
     email_daily_limit?: number;
+    default_email_account_id?: string;
     drive_documents?: { folder_id: string; folder_name: string; google_email: string; ready: boolean };
     google?: {
         email: string;
@@ -42,6 +43,7 @@ export interface OutboxJob {
     error?: string;
     provider?: string;
     provider_id?: string;
+    provider_response?: string;
     completed_at?: string;
     error_code?: string;
     repair_action?: string;
@@ -52,6 +54,11 @@ export interface OutboxJob {
     last_attempt_at?: string;
     deferred_until?: string;
     deferred_reason?: string;
+    email_account_id?: string;
+    fallback_email_account_id?: string;
+    fallback_used?: boolean;
+    initiated_by?: string;
+    delivery_attempts?: { account_id: string; at: string; outcome: string; code?: string; provider_id?: string }[];
 }
 export interface EmailDispatch {
     id: string;
@@ -59,6 +66,7 @@ export interface EmailDispatch {
     sender: string;
     at: number;
     status: "reserved" | "accepted" | "uncertain";
+    account_id?: string;
 }
 
 export interface SubmissionReceipt {

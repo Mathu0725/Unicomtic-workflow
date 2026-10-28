@@ -213,6 +213,15 @@ export interface EmailAccount {
   from_email: string;
   is_active: boolean;
   is_default: boolean;
+  /** AES-GCM ciphertext. Only server-side code may access this field. */
+  password?: string;
+  encryption?: "starttls" | "tls";
+  reply_to?: string;
+  timeout_ms?: number;
+  daily_limit?: number;
+  created_at?: string;
+  updated_at?: string;
+  last_test?: { at: string; success: boolean; code?: string; message: string };
 }
 
 export interface EmailJob {
@@ -318,6 +327,10 @@ export interface CustomForm {
   };
   email_automation: {
     enabled: boolean;
+    applicant_account_id?: string;
+    applicant_fallback_account_id?: string;
+    admin_account_id?: string;
+    admin_fallback_account_id?: string;
     applicant_template?: "form" | "registration_confirmation" | "application_confirmation" | "form_confirmation";
     admin_template?: "form" | "admin_submission";
     invitation_form_id?: string;

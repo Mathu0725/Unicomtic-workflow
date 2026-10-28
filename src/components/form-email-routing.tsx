@@ -17,6 +17,10 @@ type Row = {
   invitationFormId: string;
   staffText?: string;
   dirty?: boolean;
+  applicantAccountId?: string;
+  applicantFallbackAccountId?: string;
+  staffAccountId?: string;
+  staffFallbackAccountId?: string;
 };
 export default function FormEmailRouting({
   onDirtyChange,
@@ -28,6 +32,10 @@ export default function FormEmailRouting({
     [busy, setBusy] = useState("");
   const [error, setError] = useState(""),
     [message, setMessage] = useState("");
+  const [accounts, setAccounts] = useState<
+    { id: string; name: string; active: boolean }[]
+  >([]);
+  const [defaultAccount, setDefaultAccount] = useState("");
   const load = useCallback(async (signal?: AbortSignal) => {
     const data = await api(
       "/api/admin/email/routing",
@@ -41,6 +49,8 @@ export default function FormEmailRouting({
         staffText: row.staffEmails.join(", "),
       })),
     );
+    setAccounts(data.accounts || []);
+    setDefaultAccount(data.defaultAccountId || "");
   }, []);
   useEffect(() => {
     const controller = new AbortController();
@@ -84,6 +94,10 @@ export default function FormEmailRouting({
         expectedUpdatedAt: row.updatedAt,
         applicant: row.applicant,
         staff: row.staff,
+        applicantAccountId: row.applicantAccountId || "",
+        applicantFallbackAccountId: row.applicantFallbackAccountId || "",
+        staffAccountId: row.staffAccountId || "",
+        staffFallbackAccountId: row.staffFallbackAccountId || "",
         staffEmails: (row.staffText || "")
           .split(",")
           .map((email) => email.trim())
@@ -203,6 +217,58 @@ export default function FormEmailRouting({
                 </select>
               </label>
             </div>
+            <div className="grid gap-4 md:grid-cols-2">
+              {(
+                [
+                  ["applicantAccountId", "Applicant sending account", false],
+                  [
+                    "applicantFallbackAccountId",
+                    "Applicant fallback account",
+                    true,
+                  ],
+                  ["staffAccountId", "Staff sending account", false],
+                  ["staffFallbackAccountId", "Staff fallback account", true],
+                ] as const
+              ).map(([key, label, fallback]) => (
+                <label key={key} className="text-sm font-semibold">
+                  {label}
+                  <select
+                    className={`${inputClass} mt-1`}
+                    value={row[key] || ""}
+                    disabled={Boolean(busy)}
+                    onChange={(event) =>
+                      change(row.id, { [key]: event.target.value })
+                    }
+                  >
+                    <option value="">
+                      {fallback
+                        ? "Off · no automatic fallback"
+                        : `Default · ${accounts.find((account) => account.id === defaultAccount)?.name || "current sender"}`}
+                    </option>
+                    {accounts.map((account) => (
+                      <option
+                        key={account.id}
+                        value={account.id}
+                        disabled={!account.active}
+                      >
+                        {account.name}
+                        {account.active ? "" : " (inactive / incomplete)"}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ))}
+            </div>
+            <p className="text-xs text-slate-500">
+              Fallback is used only after a confirmed failure before acceptance.
+              Uncertain sends and daily-limit waits do not switch accounts.{" "}
+              <Link
+                className="text-blue-700 underline"
+                href="/admin/email#smtp"
+              >
+                Manage SMTP accounts
+              </Link>
+            </p>
             <label className="block text-sm font-semibold">
               Additional staff recipients
               <input

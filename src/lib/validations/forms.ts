@@ -146,6 +146,10 @@ export const googleFormSchema = z.object({
 });
 export const automationSchema = z.object({
   enabled: z.boolean(),
+  applicant_account_id: z.string().max(128).optional(),
+  applicant_fallback_account_id: z.string().max(128).optional(),
+  admin_account_id: z.string().max(128).optional(),
+  admin_fallback_account_id: z.string().max(128).optional(),
   applicant_template: z
     .enum([
       "form",

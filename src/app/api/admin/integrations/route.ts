@@ -7,6 +7,7 @@ import { googleSheetsService, spreadsheetId } from "@/lib/google/sheets-service"
 import { encrypt } from "@/lib/security/secrets";
 import { storageMode, readDatabase, transaction } from "@/lib/data/repository";
 import { AppError } from "@/lib/errors/app-error";
+import { resolveSmtpHost } from "@/lib/email/smtp-network";
 export const dynamic = "force-dynamic";
 export const GET = route(async () => {
     const db = getDb(), { google, smtp, ...settings } = db.integrations;
@@ -15,6 +16,7 @@ export const GET = route(async () => {
 }, true);
 export const POST = route(async req => {
     const body = await req.json();
+    if (body.action === "save_smtp") await resolveSmtpHost(String(body.host || ""));
     if (body.action === "check_google") {
         const snapshot = await readDatabase();
         await databaseContext.run(snapshot, () => googleRequest("https://sheets.googleapis.com/v4/spreadsheets/" + spreadsheetId(String(body.sheetId || "")) + "?fields=spreadsheetId,properties.title"));
@@ -48,6 +50,7 @@ export const POST = route(async req => {
             if (data.registration_sheet_id) data.registration_sheet_id = spreadsheetId(data.registration_sheet_id);
             if (data.application_sheet_id) data.application_sheet_id = spreadsheetId(data.application_sheet_id);
             if (db.outbox.some(j => j.type === "sheet" && j.status === "sending") && (data.registration_sheet_id !== db.integrations.registration_sheet_id || data.application_sheet_id !== db.integrations.application_sheet_id)) throw new RequestError("An export is currently running. Wait for it to finish before changing destinations.", 409);
+            if (data.email_provider !== db.integrations.email_provider) db.integrations.default_email_account_id = undefined;
             Object.assign(db.integrations, data);
             return NextResponse.json({ success: true, message: "Integration settings saved. Retry affected blocked jobs after verifying the connection." });
         }
@@ -57,6 +60,7 @@ export const POST = route(async req => {
             if (!password) throw new RequestError("An SMTP app password is required.");
             db.integrations.smtp = { ...data, password };
             db.integrations.email_provider = "smtp";
+            db.integrations.default_email_account_id = "legacy-smtp";
             return NextResponse.json({ success: true, message: "SMTP configuration saved. Verify it before releasing blocked sender jobs." });
         }
         throw new RequestError("Unknown action.");

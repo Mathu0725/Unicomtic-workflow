@@ -14,7 +14,7 @@ The central editor stores plain text messages and escapes them for HTML emails. 
 
 ## Reminders and personal messages
 
-Saved student reminder templates become the starting text on the Student Reminders page. Review the recipients and draft before sending. In the candidate email composer, select **Use saved message template** to insert the saved personal message template; you can then edit that draft.
+Saved student reminder templates become the starting text on the Student Reminders page. Review the recipients and draft before sending. In **Email Center → Manual Email Center → Saved template**, choose a starting message, review personalization, then edit and preview before confirming recipients. SMTP accounts, per-form sender overrides and safe fallback are described in [Production email management](SMTP_EMAIL_MANAGEMENT.md).
 
 ## Save behavior
 

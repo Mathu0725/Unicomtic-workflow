@@ -3,6 +3,11 @@ import { z } from "zod";
 import { route, RequestError } from "@/lib/http";
 import { getDb } from "@/lib/data/store";
 import { audit } from "@/lib/admissions/service";
+import {
+  emailAccountOptions,
+  defaultEmailAccountId,
+  validateEmailAccount,
+} from "@/lib/email/accounts";
 
 export const dynamic = "force-dynamic";
 export const GET = route(async () => {
@@ -10,6 +15,8 @@ export const GET = route(async () => {
   return NextResponse.json(
     {
       success: true,
+      accounts: emailAccountOptions(db),
+      defaultAccountId: defaultEmailAccountId(db),
       forms: db.customForms.map((form) => ({
         id: form.id,
         title: form.title,
@@ -30,6 +37,12 @@ export const GET = route(async () => {
             : "off",
         staffEmails: form.email_automation.admin_emails,
         invitationFormId: form.email_automation.invitation_form_id || "",
+        applicantAccountId: form.email_automation.applicant_account_id || "",
+        applicantFallbackAccountId:
+          form.email_automation.applicant_fallback_account_id || "",
+        staffAccountId: form.email_automation.admin_account_id || "",
+        staffFallbackAccountId:
+          form.email_automation.admin_fallback_account_id || "",
       })),
     },
     { headers: { "Cache-Control": "no-store" } },
@@ -50,6 +63,10 @@ const inputSchema = z
     staff: z.enum(["off", "form", "admin_submission"]),
     staffEmails: z.array(z.string().trim().email()).max(20),
     invitationFormId: z.string().max(128),
+    applicantAccountId: z.string().max(128).optional(),
+    applicantFallbackAccountId: z.string().max(128).optional(),
+    staffAccountId: z.string().max(128).optional(),
+    staffFallbackAccountId: z.string().max(128).optional(),
   })
   .strict();
 export const POST = route(async (req) => {
@@ -57,6 +74,21 @@ export const POST = route(async (req) => {
     db = getDb(),
     form = db.customForms.find((form) => form.id === input.formId);
   if (!form) throw new RequestError("Form not found.", 404);
+  for (const id of [
+    input.applicantAccountId,
+    input.applicantFallbackAccountId,
+    input.staffAccountId,
+    input.staffFallbackAccountId,
+  ])
+    validateEmailAccount(db, id);
+  for (const [primary, fallback] of [
+    [input.applicantAccountId, input.applicantFallbackAccountId],
+    [input.staffAccountId, input.staffFallbackAccountId],
+  ])
+    if (fallback && fallback === (primary || defaultEmailAccountId(db)))
+      throw new RequestError(
+        "Choose a different fallback account, or leave fallback off.",
+      );
   if (input.expectedUpdatedAt !== form.updated_at || form.editor_draft)
     throw new RequestError(
       "This form changed or has a saved builder draft. Publish or discard its draft, then reload routing before saving.",
@@ -77,6 +109,18 @@ export const POST = route(async (req) => {
       "Choose an application form from the same intake for the follow-up link.",
     );
   Object.assign(form.email_automation, {
+    ...(input.applicantAccountId !== undefined
+      ? { applicant_account_id: input.applicantAccountId }
+      : {}),
+    ...(input.applicantFallbackAccountId !== undefined
+      ? { applicant_fallback_account_id: input.applicantFallbackAccountId }
+      : {}),
+    ...(input.staffAccountId !== undefined
+      ? { admin_account_id: input.staffAccountId }
+      : {}),
+    ...(input.staffFallbackAccountId !== undefined
+      ? { admin_fallback_account_id: input.staffFallbackAccountId }
+      : {}),
     enabled: input.applicant !== "off" || input.staff !== "off",
     send_applicant_email: input.applicant !== "off",
     applicant_template:
@@ -100,6 +144,10 @@ export const POST = route(async (req) => {
     applicant: input.applicant,
     staff: input.staff,
     invitationFormId: input.invitationFormId,
+    applicantAccountId: input.applicantAccountId,
+    applicantFallbackAccountId: input.applicantFallbackAccountId,
+    staffAccountId: input.staffAccountId,
+    staffFallbackAccountId: input.staffFallbackAccountId,
   });
   return NextResponse.json({
     success: true,
