@@ -13,18 +13,19 @@ import { emailCandidates } from "../email/candidates";
 import { secureCandidateEmail } from "../security/candidate-access";
 import { defaultEmailAccountId, GMAIL_ACCOUNT } from "../email/accounts";
 import { sanitizeEmailHtml } from "../email/sanitize";
+import { workshopBookingSheetRow } from "../workshops/booking-sheet-row";
 export function enqueue(db: DatabaseStore, type: OutboxJob["type"], key: string, payload: Record<string, any>) {
     const existing = db.outbox.find(j => j.key === key);
     if (existing)
         return existing;
-    const job: OutboxJob = { id: randomUUID(), key, type, payload, status: "queued", attempts: 0, created_at: new Date().toISOString(), request_id: requestContext.getStore()?.requestId };
+    const job: OutboxJob = { id: randomUUID(), key, type, payload, status: "queued", attempts: 0, created_at: new Date().toISOString(), request_id: requestContext.getStore()?.requestId, initiated_by: payload.initiatedBy };
     if (type === "email") {
         job.email_account_id = payload.smtpAccountId || defaultEmailAccountId(db);
         job.fallback_email_account_id = payload.fallbackSmtpAccountId || undefined;
         job.initiated_by = payload.initiatedBy;
         job.payload = { ...payload, html: sanitizeEmailHtml(String(payload.html || "")) };
     }
-    const blocker = db.outbox.find(j => j.status === "blocked" && j.error_code !== "CANDIDATE_EXPORT_CHANGED" && (type === "sheet" ? j.type === "sheet" && (j.payload.sheetId === payload.sheetId && j.payload.sheetName === payload.sheetName || ["GOOGLE_AUTH_REVOKED", "GOOGLE_NOT_CONNECTED", "GOOGLE_NOT_CONFIGURED", "GOOGLE_TOKEN_UNREADABLE"].includes(j.error_code || "")) : j.type === "email" && (j.email_account_id || defaultEmailAccountId(db)) === job.email_account_id && !job.fallback_email_account_id && j.error_code?.startsWith(job.email_account_id === GMAIL_ACCOUNT ? "GOOGLE_" : "SMTP_")));
+    const blocker = db.outbox.find(j => j.status === "blocked" && !["CANDIDATE_EXPORT_CHANGED","SHEET_DESTINATION_CHANGED","WORKSHOP_BOOKING_MISSING"].includes(j.error_code || "") && (type === "sheet" ? j.type === "sheet" && (j.payload.sheetId === payload.sheetId && j.payload.sheetName === payload.sheetName || ["GOOGLE_AUTH_REVOKED", "GOOGLE_NOT_CONNECTED", "GOOGLE_NOT_CONFIGURED", "GOOGLE_TOKEN_UNREADABLE"].includes(j.error_code || "")) : j.type === "email" && (j.email_account_id || defaultEmailAccountId(db)) === job.email_account_id && !job.fallback_email_account_id && j.error_code?.startsWith(job.email_account_id === GMAIL_ACCOUNT ? "GOOGLE_" : "SMTP_")));
     if (blocker) { job.status = "blocked"; job.error = blocker.error; job.error_code = blocker.error_code; job.repair_action = blocker.repair_action; }
     db.outbox.push(job);
     return job;
@@ -78,6 +79,11 @@ export async function processOutbox(limit = 120, timeBudgetMs = 45000, onlyJobId
                     item.status = item.type === "email" ? "uncertain" : "queued";
                     item.error = item.type === "email" ? "Worker interrupted. Check provider before retrying this email." : "Worker interrupted. Spreadsheet references will be reconciled on retry.";
                 }
+            for (const item of db.outbox.filter(j=>j.status==="queued"&&j.type==="sheet"&&j.payload.workshopId)) {
+                const row=workshopBookingSheetRow(db,item.payload.bookingId);
+                if(row&&row.workshopId===item.payload.workshopId)item.payload.rows=[row];
+                else {item.status="blocked";item.error_code="WORKSHOP_BOOKING_MISSING";item.error="This booking or its linked student no longer exists. Review workshop bookings before exporting.";}
+            }
             const busySheets = db.outbox.some(j => j.type === "sheet" && j.status === "sending");
             const budgets = new Map<string, ReturnType<typeof emailBudget>>();
             const jobBudget = (job: OutboxJob) => { const id = job.email_account_id || defaultEmailAccountId(db); if (!budgets.has(id)) budgets.set(id, emailBudget(db,now,emailSender(db,id),id)); return budgets.get(id)!; };
@@ -102,7 +108,7 @@ export async function processOutbox(limit = 120, timeBudgetMs = 45000, onlyJobId
                 ));
                 return { jobs: [] as OutboxJob[], waitMs: readyTimes.length ? readyTimes.reduce((min, value) => Math.min(min, value), Infinity) - now : 0 };
             }
-            const candidates = next.type === "sheet" ? db.outbox.filter(j => due(j) && j.type === "sheet" && j.payload.sheetId === next.payload.sheetId && j.payload.sheetName === next.payload.sheetName).slice(0, Math.min(100, limit - processed)) : [next];
+            const candidates = next.type === "sheet" ? db.outbox.filter(j => due(j) && j.type === "sheet" && j.payload.sheetId === next.payload.sheetId && j.payload.sheetName === next.payload.sheetName && j.payload.workshopId === next.payload.workshopId).slice(0, Math.min(100, limit - processed)) : [next];
             const batch: OutboxJob[] = [];
             let bytes = 0;
             for (const candidate of candidates) {
@@ -151,7 +157,7 @@ export async function processOutbox(limit = 120, timeBudgetMs = 45000, onlyJobId
             if (job.type === "email")
                 return sendEmail({ ...secureCandidateEmail(db, job.payload), smtpAccountId: job.email_account_id, messageId: `<${job.id}@unicom-tic.local>` } as SendEmailPayload);
             const rows = jobs.flatMap(item => item.payload.rows);
-            const res = await googleSheetsService.syncRecords(job.payload.sheetId, "registrations", rows, job.payload.sheetName);
+            const res = job.payload.workshopId ? await googleSheetsService.syncWorkshopBookings(job.payload.sheetId,job.payload.sheetName,job.payload.workshopId,rows) : await googleSheetsService.syncRecords(job.payload.sheetId, "registrations", rows, job.payload.sheetName);
             return { success: res.success, error: res.error, provider: "google_sheets", messageId: job.payload.sheetId, uncertain: false, retryAfterMs: res.retryAfterMs, errorCode: res.errorCode, failureKind: res.failureKind, action: res.action };
             });
         } catch (error: any) {

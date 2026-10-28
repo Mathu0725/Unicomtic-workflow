@@ -8,6 +8,7 @@ import { encrypt } from "@/lib/security/secrets";
 import { storageMode, readDatabase, transaction } from "@/lib/data/repository";
 import { AppError } from "@/lib/errors/app-error";
 import { resolveSmtpHost } from "@/lib/email/smtp-network";
+import { workshopTabReserved } from "@/lib/workshops/sheet-config";
 export const dynamic = "force-dynamic";
 export const GET = route(async () => {
     const db = getDb(), { google, smtp, ...settings } = db.integrations;
@@ -49,6 +50,7 @@ export const POST = route(async req => {
             const data = z.object({ email_provider: z.enum(["gmail", "smtp"]), admin_notification_email: z.string().email().or(z.literal("")), registration_sheet_id: z.string().max(500).optional(), application_sheet_id: z.string().max(500).optional() }).parse(body);
             if (data.registration_sheet_id) data.registration_sheet_id = spreadsheetId(data.registration_sheet_id);
             if (data.application_sheet_id) data.application_sheet_id = spreadsheetId(data.application_sheet_id);
+            for(const [sheetId,tab] of [[data.registration_sheet_id,"Registrations"],[data.application_sheet_id,"Applications"]])if(sheetId&&workshopTabReserved(db,sheetId,tab!))throw new RequestError("This tab is reserved for workshop bookings. Choose a different admissions spreadsheet.",409);
             if (db.outbox.some(j => j.type === "sheet" && j.status === "sending") && (data.registration_sheet_id !== db.integrations.registration_sheet_id || data.application_sheet_id !== db.integrations.application_sheet_id)) throw new RequestError("An export is currently running. Wait for it to finish before changing destinations.", 409);
             if (data.email_provider !== db.integrations.email_provider) db.integrations.default_email_account_id = undefined;
             Object.assign(db.integrations, data);

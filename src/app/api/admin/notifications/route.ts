@@ -35,6 +35,7 @@ export const GET = route(async (req) => {
     .reverse()
     .map((job) => {
       const candidate = resolveCandidate(job);
+      const workshop=job.payload.workshopId&&db.workshops.find(item=>item.id===job.payload.workshopId);
       const submission =
         job.payload.sourceId &&
         db.formSubmissions.find(
@@ -86,10 +87,11 @@ export const GET = route(async (req) => {
       return {
         ...job,
         formTitle: source?.title,
+        workshopTitle: workshop?.title,
         emailKind,
-        purpose: event === "other" ? job.payload.templateId || "other" : event,
+        purpose: workshop?"workshop_bookings_export":event === "other" ? job.payload.templateId || "other" : event,
         formId: source?.id,
-        intakeId: source?.campaign_id || candidate?.campaignId,
+        intakeId: source?.campaign_id || candidate?.campaignId || workshop?.campaign_id,
         accountId,
         accountName:
           accounts.find((account) => account.id === accountId)?.name ||
@@ -140,6 +142,9 @@ export const GET = route(async (req) => {
             job.provider_id,
             job.id,
             job.payload.manualBatchId,
+            job.payload.workshopId,
+            job.workshopTitle,
+            job.payload.sheetName,
           ].some(
             (value) =>
               typeof value === "string" && value.toLowerCase().includes(search),

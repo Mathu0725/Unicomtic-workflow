@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useLiveData, inputClass, panelClass, Notice } from "./live-data";
 import { emailJobStatus } from "@/lib/email/job-status";
 
@@ -26,6 +26,12 @@ export default function EmailDeliveryActivity({
     account: "",
     origin: "",
   });
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("channel") === "sheet") setType("sheet");
+    if (params.get("deliverySearch"))
+      setSearch(params.get("deliverySearch")!.slice(0, 200));
+  }, []);
   const queue = useLiveData(
     `/api/admin/notifications?${new URLSearchParams({ stage, status, type, search, ...extra, page: String(page), revision: String(revision) })}`,
     5000,
@@ -244,9 +250,9 @@ export default function EmailDeliveryActivity({
                   </td>
                   <td className="p-3 max-w-64 break-words">
                     {job.payload.subject || job.payload.sheetName}
-                    {job.formTitle && (
+                    {(job.formTitle || job.workshopTitle) && (
                       <span className="mt-1 block font-semibold text-slate-600">
-                        {job.formTitle}
+                        {job.workshopTitle || job.formTitle}
                       </span>
                     )}
                     {job.type === "email" && (

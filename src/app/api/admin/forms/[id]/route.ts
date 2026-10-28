@@ -9,6 +9,8 @@ import { editorValues } from "@/lib/forms/editor";
 import { fieldIdentityKeys, identityKeys } from "@/lib/forms/field-rules";
 import { richTextPlainText } from "@/lib/forms/rich-text";
 import { validateEmailAccount } from "@/lib/email/accounts";
+import { workshopTabReserved } from "@/lib/workshops/sheet-config";
+import { formSheetTarget } from "@/lib/google/sheet-target";
 export const dynamic = "force-dynamic";
 const find = (id: string) =>
   getDb().customForms.find((f) => f.id === id || f.slug === id);
@@ -229,6 +231,7 @@ export const PATCH = route(
         synced_count: form.google_form_config?.synced_count,
       };
     const previousSlug = form.slug;
+    if(incoming.google_sheets_config){const target=formSheetTarget(getDb().integrations,{...form,google_sheets_config:incoming.google_sheets_config});if(target&&workshopTabReserved(getDb(),target.sheet_id,target.sheet_name))throw new RequestError("This tab is reserved for workshop bookings. Choose a separate form response tab.",409);}
     if (incoming.messages)
       incoming.messages = { ...form.messages, ...incoming.messages };
     if (incoming.message_display)

@@ -1,6 +1,7 @@
 import { route } from "@/lib/http";
 export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
+import { queueWorkshopBooking } from "@/lib/workshops/sheet-sync";
 import { getDb } from "@/lib/data/store";
 import { generateStudentExamId, maskNic, maskPhone, maskEmail } from "@/lib/attendance/id-generator";
 import { attendanceSchema, requireStudentInCampaign } from "@/lib/validations/admin";
@@ -152,6 +153,7 @@ async function handlePOST(req: NextRequest) {
       db.attendance.push(existingRecord);
     }
 
+    for(const booking of db.workshopBookings.filter(item=>item.workshop_id===workshopId&&item.student_id===studentId))queueWorkshopBooking(db,booking.id);
     db.auditLogs.push({
       id: `log-${Date.now()}`,
       user_email: markedBy,
