@@ -4,6 +4,14 @@
 
 Vercel Hobby native cron ஒரு நாளில் ஒருமுறை மட்டுமே அனுமதிக்கிறது. அதனால் `vercel.json`-ல் minute cron சேர்க்கப்படவில்லை. Supabase Cron பயன்படுத்துகிறோம். Sources: [Vercel cron limits](https://vercel.com/docs/cron-jobs/usage-and-pricing), [Supabase Cron](https://supabase.com/docs/guides/cron).
 
+## Production activation — 2026-10-28
+
+`https://uticx.com`-க்கு Supabase Cron activate செய்யப்பட்டுள்ளது. Applied migration `20261028043408_enable_admissions_queue_extensions` enables `pg_cron` and `pg_net`; the latter is installed in `extensions`. Vault holds the named production origin and worker credential. No secret value is stored in this repository or the cron command.
+
+Job `admissions-notification-queue` invokes the protected queue endpoint every minute. Two consecutive scheduled HTTP responses returned 200. The first run completed at 10:06:28 Sri Lanka time and cleared the six waiting jobs: four emails, including two secure access links, and two spreadsheet exports. Gmail confirmed acceptance; this is not proof of inbox placement. The next run did not resend completed messages. Application access still requires the candidate's private email link; links are created at dispatch and expire 30 minutes later.
+
+For a future domain or worker-secret change, update both Vercel and the named Vault values, check the protected endpoint in read-only mode, then verify cron HTTP responses and worker completion. Do not publish Vault values, outgoing request headers or applicant records in diagnostics.
+
 ## 1. Vercel project
 
 1. இந்த source-ஐ private Git repository-ல் வைத்து Vercel-ல் import செய்யுங்கள், அல்லது Vercel CLI மூலம் இந்த folder-ஐ link செய்யுங்கள்.
@@ -79,7 +87,7 @@ npm run db:check
 4. இது **real queued messages, Sheets exports மற்றும் workshop reminders-ஐ dispatch செய்யும்**. Enable செய்வதற்கு முன் Email Center-ல் pending recipients/jobs-ஐ review செய்யுங்கள்.
 5. 2–3 minutes பிறகு portal → System health-ல் worker last seen/completed மற்றும் queue counts பார்க்கவும்.
 
-இந்த SQL setup தானாக run செய்யப்படவில்லை. Supabase administrator access மற்றும் deployed URL தேவை. Vault/net/cron schemas-ஐ public Data API exposure-ல் சேர்க்காதீர்கள். Vault decrypted views / outgoing request headers-க்கு client-role grants கொடுக்காதீர்கள். [Vault](https://supabase.com/docs/guides/database/vault), [pg_net](https://supabase.com/docs/guides/database/extensions/pg_net).
+மேலே உள்ள activation record தற்போதைய production setup-ஐக் குறிப்பிடுகிறது. புதிய environment-க்கு Supabase administrator access மற்றும் deployed URL தேவை. Vault/net/cron schemas-ஐ public Data API exposure-ல் சேர்க்காதீர்கள். Vault decrypted views / outgoing request headers-க்கு client-role grants கொடுக்காதீர்கள். [Vault](https://supabase.com/docs/guides/database/vault), [pg_net](https://supabase.com/docs/guides/database/extensions/pg_net).
 
 Overlapping cron requests வந்தால் durable lease காரணமாக அடுத்த request `skipped: true` என முடியும். Process இறந்தால் lease 3 minutes-ல் expire ஆகும். ஒவ்வொரு job-க்கும் existing lease/retry rules தொடரும்: uncertain email தானாக resend ஆகாது; Sheets references reconcile செய்யப்படும். A completed worker run means the queue attempt finished; provider failures remain visible on individual jobs.
 
@@ -119,4 +127,4 @@ JSON + matching `.sha256` file இரண்டையும் encrypted off-mach
 
 300-user isolated local HTTP test passed. இது Vercel + real Supabase performance guarantee அல்ல. Current repository ஒவ்வொரு mutation-லும் aggregate JSON-ஐ read/write செய்கிறது. Representative historical data உடன் separate staging database/deployed host-ல் burst test செய்து latency/CAS retries பார்த்த பிறகு public intake திறக்க வேண்டும். Live admissions database-ல் load-test data உருவாக்காதீர்கள்.
 
-Actual Vercel project/domain கிடைக்காததால் deployment, scheduled live dispatch மற்றும் hosted burst validation இந்த workspace change-ல் செய்யப்படவில்லை.
+Production deployment மற்றும் scheduled live dispatch மேலே குறிப்பிட்டபடி verify செய்யப்பட்டுள்ளன. Hosted burst validation இன்னும் செய்யப்படவில்லை; 300-user result isolated local HTTP test-க்கு மட்டுமே பொருந்தும்.
