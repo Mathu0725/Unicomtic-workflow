@@ -303,6 +303,7 @@ export interface CustomForm {
   closes_at?: string;
   submission_limit?: number;
   type: "registration" | "application" | "workshop_rsvp" | "custom";
+  application_mode?: "open" | "invitation";
   campaign_id?: string;
   is_active: boolean;
   fields: FormField[];
@@ -317,6 +318,9 @@ export interface CustomForm {
   };
   email_automation: {
     enabled: boolean;
+    applicant_template?: "form" | "registration_confirmation" | "application_confirmation" | "form_confirmation";
+    admin_template?: "form" | "admin_submission";
+    invitation_form_id?: string;
     send_applicant_email: boolean;
     applicant_subject: string;
     applicant_body_html: string;

@@ -262,71 +262,30 @@ export default function FormSettings({
     return (
       <SettingsCard
         title="Email notifications"
-        description="Messages use the connected Gmail or SMTP sender and the existing delivery queue."
+        description="Choose each form's applicant confirmation, staff alert and follow-up application link in one place."
       >
-        <Toggle
-          label="Enable form emails"
-          checked={values.email_automation.enabled}
-          onChange={(enabled) =>
-            onChange({
-              email_automation: { ...values.email_automation, enabled },
-            })
-          }
-        />
-        <Toggle
-          label="Confirmation email to applicant"
-          checked={values.email_automation.send_applicant_email}
-          onChange={(send_applicant_email) =>
-            onChange({
-              email_automation: {
-                ...values.email_automation,
-                send_applicant_email,
-              },
-            })
-          }
-        />
-        <Toggle
-          label="Alert admissions staff"
-          checked={values.email_automation.send_admin_notification}
-          onChange={(send_admin_notification) =>
-            onChange({
-              email_automation: {
-                ...values.email_automation,
-                send_admin_notification,
-              },
-            })
-          }
-        />
-        <SettingLabel
-          label="Additional staff email addresses"
-          hint="Separate addresses with commas. The configured admissions notification address is included when staff alerts are enabled."
-        >
-          <input
-            className={inputClass}
-            value={values.email_automation.admin_emails.join(", ")}
-            onChange={(event) =>
-              onChange(
-                {
-                  email_automation: {
-                    ...values.email_automation,
-                    admin_emails: event.target.value
-                      .split(",")
-                      .map((email) => email.trim())
-                      .filter(Boolean),
-                  },
-                },
-                "staff-emails",
-              )
-            }
-          />
-        </SettingLabel>
+        <p className="text-sm text-slate-600">
+          Applicant confirmation:{" "}
+          {values.email_automation.enabled &&
+          values.email_automation.send_applicant_email
+            ? values.email_automation.applicant_template ||
+              "This form's custom template"
+            : "Off"}
+        </p>
+        <p className="text-sm text-slate-600">
+          Staff alert:{" "}
+          {values.email_automation.enabled &&
+          values.email_automation.send_admin_notification
+            ? values.email_automation.admin_template ||
+              "This form's custom template"
+            : "Off"}
+        </p>
         <Link href="/admin/email/templates" className={buttonClass}>
-          Edit confirmation & staff email templates →
+          Choose templates & sending rules →
         </Link>
-        <p className="text-xs leading-relaxed text-slate-500">
-          Publish notification settings before leaving to edit templates. Saved
-          drafts retain their email template values; another editor's changes
-          trigger a conflict check.
+        <p className="text-xs text-slate-500">
+          Publish or discard this builder's saved draft before changing routing.
+          Edit message wording in the Edit templates tab.
         </p>
       </SettingsCard>
     );
@@ -404,6 +363,37 @@ export default function FormSettings({
       <SettingsCard title="Form content">
         <FormContentSettings values={values} onChange={onChange} />
       </SettingsCard>
+      {form.type === "application" && (
+        <SettingsCard
+          title="Who can apply?"
+          description="Choose whether applicants need an earlier registration. Opening and closing dates apply in both modes."
+        >
+          <SettingLabel label="Application access">
+            <select
+              className={inputClass}
+              value={values.application_mode || "invitation"}
+              onChange={(event) =>
+                onChange({
+                  application_mode: event.target.value as "open" | "invitation",
+                })
+              }
+            >
+              <option value="open">
+                Open application · no prior registration required
+              </option>
+              <option value="invitation">
+                Registered applicants only · secure email link
+              </option>
+            </select>
+          </SettingLabel>
+          <p className="text-xs leading-relaxed text-slate-500">
+            Open applications create one application and its internal tracking
+            record together. Applicants receive the application confirmation
+            only. Private tracking continues to require an email link. Duplicate
+            identity checks remain active.
+          </p>
+        </SettingsCard>
+      )}
       <SettingsCard
         title="Public link"
         description="Previously shared links will keep opening this form."

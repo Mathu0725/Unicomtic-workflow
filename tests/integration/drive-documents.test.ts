@@ -102,6 +102,17 @@ it("requires a verified candidate before creating an application document in Dri
   expect(response.status).toBe(401);
   expect(files.size).toBe(0); expect((await readDatabase()).documentUploads).toHaveLength(0);
 });
+it("accepts private document uploads for an open application without prior registration", async () => {
+  await transaction(db => { db.customForms[0].type = "application"; db.customForms[0].application_mode = "open"; });
+  await setupDrive(adminRequest({ action: "create_folder" }), undefined);
+  const response = await upload(); expect(response.status).toBe(200);
+  const uploaded = await response.json(); expect((await postAnswers(uploaded.receipt)).status).toBe(200);
+  const db = await readDatabase(); expect(db.applications).toHaveLength(1); expect(db.registrations[0].source).toBe("direct_application"); expect(db.documentUploads[0].submission_id).toBe(db.formSubmissions[0].id);
+});
+it("blocks document uploads after an open application's closing date", async () => {
+  await transaction(db => { db.customForms[0].type = "application"; db.customForms[0].application_mode = "open"; db.customForms[0].closes_at = new Date(Date.now()-1000).toISOString(); });
+  expect((await upload()).status).toBe(404); expect(files.size).toBe(0); expect((await readDatabase()).documentUploads).toHaveLength(0);
+});
 it("binds application uploads and their retry keys to the verified candidate", async () => {
   const [firstCookie, otherCookie] = await applicationCandidates();
   await setupDrive(adminRequest({ action: "create_folder" }), undefined);

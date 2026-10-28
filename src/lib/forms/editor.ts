@@ -8,6 +8,7 @@ export const editableFormKeys = [
   "description_rich",
   "slug",
   "status",
+  "application_mode",
   "is_active",
   "fields",
   "google_sheets_config",

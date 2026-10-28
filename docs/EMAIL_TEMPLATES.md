@@ -1,6 +1,6 @@
 # Editing admissions email templates
 
-Open **Communications → Email Templates** in the admin portal. Select a template, edit its subject and message, check the sample preview, then select **Save template**. English and Tamil are supported.
+Open **Communications → Email Templates** in the admin portal. **Form routing** chooses what each form sends. In **Edit templates**, select a template, edit its subject and message, check the sample preview, then select **Save template**. English and Tamil are supported.
 
 The editor covers registration and application confirmations, staff submission alerts, application invitations, workshop bookings and reminders, interviews, final results, candidate access links, student reminders, personal candidate messages, and sender test notifications.
 
@@ -8,7 +8,7 @@ Copy the available `{{variable}}` tokens exactly. The portal fills them with the
 
 ## Form confirmations and staff alerts
 
-Each existing form has its own confirmation and staff alert entry. These entries take priority over the shared confirmation and staff alert defaults. Use **Form sending settings** to choose recipients and enable or disable automatic sending in Builder.
+Each existing form has its own confirmation and staff alert entry. **Form routing** lets you choose that custom entry, a shared confirmation template or Off for each audience. It also controls additional staff recipients and the optional application form link in registration receipts. The Builder links to this central setup. See [Form routing and direct applications](FORM_EMAIL_ROUTING.md).
 
 The central editor stores plain text messages and escapes them for HTML emails. Existing Builder HTML stays intact until you save that form template in the central editor; saving there replaces its formatting with the edited plain text.
 

@@ -146,6 +146,16 @@ export const googleFormSchema = z.object({
 });
 export const automationSchema = z.object({
   enabled: z.boolean(),
+  applicant_template: z
+    .enum([
+      "form",
+      "registration_confirmation",
+      "application_confirmation",
+      "form_confirmation",
+    ])
+    .optional(),
+  admin_template: z.enum(["form", "admin_submission"]).optional(),
+  invitation_form_id: z.string().max(128).optional(),
   send_applicant_email: z.boolean(),
   applicant_subject: z.string().max(500),
   applicant_body_html: z.string().max(50000),
@@ -169,6 +179,7 @@ export const formEditableSchema = z
         "Use 1–100 lowercase letters, numbers and single hyphens.",
       ),
     status: z.enum(["draft", "published", "paused", "closed"]),
+    application_mode: z.enum(["open", "invitation"]),
     is_active: z.boolean(),
     fields: fieldsSchema,
     google_form_config: googleFormSchema,
