@@ -280,6 +280,16 @@ export const POST = route(
           "The candidate's contact details changed. Review the candidate and compose a new email.",
           409,
         );
+      if (job.error_code === "TEMPLATE_INVALID")
+        throw new RequestError(
+          "This queued message has invalid template content. Fix the template and create a new message; this snapshot cannot be retried.",
+          409,
+        );
+      if (job.error_code === "FORM_CAMPAIGN_CONTACT_CHANGED")
+        throw new RequestError(
+          "This form response or email changed. Review recipients and create a new campaign.",
+          409,
+        );
       if (job.error_code === "CANDIDATE_EXPORT_CHANGED")
         throw new RequestError(
           "The candidate's contact details changed. Queue a fresh export from form responses or Sheets Synchronization.",
@@ -344,6 +354,8 @@ export const POST = route(
             "REMINDER_SUPERSEDED",
             "CANDIDATE_CONTACT_CHANGED",
             "CANDIDATE_EXPORT_CHANGED",
+            "TEMPLATE_INVALID",
+            "FORM_CAMPAIGN_CONTACT_CHANGED",
           ].includes(job.error_code || "")
         )
           continue;

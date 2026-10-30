@@ -389,9 +389,25 @@ export interface FormSubmission {
   accepted_declarations?: { fieldId: string; label: string }[];
 }
 
+export interface CustomEmailTemplate {
+  id: string;
+  title: string;
+  form_id?: string;
+  subject: string;
+  body_html: string;
+  is_active: boolean;
+  version: number;
+  created_at: string;
+  updated_at: string;
+  updated_by: string;
+  archived_at?: string;
+  revisions: { version: number; subject: string; body_html: string; updated_at: string; updated_by: string }[];
+}
+
 // Initial In-Memory Database
 export class DatabaseStore {
   emailTemplates: Partial<Record<NotificationTemplateId, SavedEmailTemplate>> = {};
+  customEmailTemplates: CustomEmailTemplate[] = [];
   candidateAccessAttempts: { key: string; count: number; expires: number }[] = [];
   documentUploads: DocumentUpload[] = [];
   staffAccounts: StaffAccount[] = [];

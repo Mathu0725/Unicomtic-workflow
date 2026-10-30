@@ -67,6 +67,9 @@ export default function EmailCenterPage() {
         <Link href="/admin/email/templates?view=templates">
           Template Management
         </Link>
+        <Link href="/admin/email/form-campaigns">Form Campaigns</Link>
+        <Link href="/admin/email/reports">Daily Reports</Link>
+        <Link href="/admin/email/reusable-templates">Reusable Templates</Link>
         <a href="#manual">Manual Email Center</a>
         <a href="#delivery">Delivery Activity</a>
         <Link href="/admin/google-integrations">Google connection</Link>

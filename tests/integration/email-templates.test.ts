@@ -4,6 +4,7 @@ import path from "node:path";
 import os from "node:os";
 import { NextRequest } from "next/server";
 import { GET, POST } from "../../src/app/api/admin/email/templates/route";
+import { POST as notifications } from "../../src/app/api/admin/notifications/route";
 import { GET as reminderSettings } from "../../src/app/api/admin/reminders/route";
 import { GET as candidateDirectory } from "../../src/app/api/admin/email/candidates/route";
 import { POST as accessRequest } from "../../src/app/api/candidate-access/request/route";
@@ -89,6 +90,32 @@ it("applies per-form applicant and staff templates, including the formerly ignor
   expect(jobs[0].payload.subject).toMatch(/^Form confirmation REG-/);
   expect(jobs[1].payload.subject).toBe("Staff alert Template Student");
   expect(jobs[1].payload.html).toContain("Count 1");
+});
+it("records an invalid form template as blocked without substituting a different receipt or losing the submission", async () => {
+  await transaction(db => {
+    const form = db.customForms[0];
+    form.email_automation.enabled = true;
+    form.email_automation.send_applicant_email = true;
+    form.email_automation.send_admin_notification = false;
+    form.email_automation.applicant_template = "form";
+    form.email_automation.applicant_subject = "Hello {{optionalAnswer}}";
+    form.email_automation.applicant_body_html = "<p>Your response was received.</p>";
+    const submission = { id: crypto.randomUUID(), form_id: form.id, reference_no: db.registrations[0].reference_no, data: {}, synced_to_sheet: false, email_sent: false, created_at: new Date().toISOString() };
+    db.formSubmissions.push(submission);
+    notifySubmission(db.students[0], db.registrations[0], undefined, submission, form);
+  });
+  const db = await readDatabase();
+  expect(db.formSubmissions).toHaveLength(1);
+  const job = db.outbox.find(item => item.type === "email")!;
+  expect(job.status).toBe("blocked");
+  expect(job.error_code).toBe("TEMPLATE_INVALID");
+  expect(job.error).toContain("optionalAnswer");
+  expect(job.payload.templateId).toBe(`form:${db.customForms[0].id}:applicant`);
+  expect(job.payload.html).not.toContain("Your response to");
+  expect(db.auditLogs.some(item => item.action === "SUBMISSION_EMAIL_BLOCKED")).toBe(true);
+  expect((await notifications(req({ action: "retry", jobId: job.id }, cookie, "/api/admin/notifications"), undefined)).status).toBe(409);
+  expect((await notifications(req({ action: "release_blocked" }, cookie, "/api/admin/notifications"), undefined)).status).toBe(200);
+  expect((await readDatabase()).outbox[0].status).toBe("blocked");
 });
 it("escapes personalized values and template markup and preserves replacement dollar signs", async () => {
   await save("workshop_booking", { subject: "Seat {{name}}", body: "<script>alert(1)</script> {{name}} {{workshop}}" });
