@@ -18,11 +18,15 @@ export async function fetchWithTimeout(url: string, init: RequestInit = {}, time
         throw new ApiError(timeout ? "The server took too long to respond. Your request may have been saved. Check its status before repeating this action." : "Could not reach admissions. Check your connection and try again.", 0, timeout ? "REQUEST_TIMEOUT" : "NETWORK_ERROR");
     }
 }
-export async function readJson(response: Response) {
+export async function readJson(response: Response, readOnly = false) {
     let data: any;
     try { data = await response.json(); }
     catch {
-        throw new ApiError("Admissions returned an unreadable response. Your request may have been saved. Check its status before repeating this action.", response.status || 502, "INVALID_RESPONSE", response.headers.get("X-Request-ID") || undefined);
+        const reference = response.headers.get("X-Request-ID") || response.headers.get("X-Vercel-ID") || undefined;
+        const message = readOnly
+            ? `Could not load admissions data (HTTP ${response.status || 502}). Reload this page. No changes were saved by this request.`
+            : `Admissions returned an unreadable response (HTTP ${response.status || 502}). Your request may have been saved. Use Resolve pending submission before repeating it.`;
+        throw new ApiError(message, response.status || 502, "INVALID_RESPONSE", reference);
     }
     if (!data || typeof data !== "object" || Array.isArray(data)) throw new ApiError("Admissions returned an invalid response. Please try again later.", response.status, "INVALID_RESPONSE");
     return data;
@@ -32,15 +36,23 @@ export function responseError(response: Response, data: any) {
 }
 /** Legacy callers can continue reading .json(); failures always reach their catch handler. */
 export async function apiResponse(url: string, init: RequestInit = {}) {
-    const response = await fetchWithTimeout(url, init);
-    const data = await readJson(response.clone());
-    if (!response.ok || data.success === false) {
-        if (response.status === 401 && data.code === "SESSION_REQUIRED" && typeof window !== "undefined" && !url.startsWith("/api/auth/")) window.dispatchEvent(new Event("admissions:session-expired"));
-        throw responseError(response, data);
+    const readOnly = !init.method || ["GET", "HEAD"].includes(init.method.toUpperCase());
+    for (let attempt = 0; ; attempt++) {
+        const response = await fetchWithTimeout(url, init);
+        let data: any;
+        try { data = await readJson(response.clone(), readOnly); }
+        catch (error) {
+            if (readOnly && attempt === 0 && error instanceof ApiError && error.code === "INVALID_RESPONSE" && !init.signal?.aborted) continue;
+            throw error;
+        }
+        if (!response.ok || data.success === false) {
+            if (response.status === 401 && data.code === "SESSION_REQUIRED" && typeof window !== "undefined" && !url.startsWith("/api/auth/")) window.dispatchEvent(new Event("admissions:session-expired"));
+            throw responseError(response, data);
+        }
+        return response;
     }
-    return response;
 }
 export async function api(url: string, body?: any, method = "POST", signal?: AbortSignal) {
     const response = await apiResponse(url, { ...(body === undefined ? {} : { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }), signal });
-    return readJson(response);
+    return readJson(response, body === undefined || ["GET", "HEAD"].includes(method.toUpperCase()));
 }
