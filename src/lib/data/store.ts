@@ -45,6 +45,7 @@ export interface Student {
   whatsapp?: string;
   nic: string;
   nic_last_four: string;
+  ut_number?: string;
   gender: string;
   dob: string;
   address: string;

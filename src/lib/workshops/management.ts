@@ -143,6 +143,7 @@ export function workshopDetail(
             db.applications.find((a) => a.registration_id === b.registration_id)
               ?.application_no || "",
           attendanceStatus: attendance?.status || "unmarked",
+          utNumber: s?.ut_number || "",
           attendance,
           sourceForms: [
             ...new Set(

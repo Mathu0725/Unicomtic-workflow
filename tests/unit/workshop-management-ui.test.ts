@@ -71,6 +71,7 @@ function details(): ReturnType<typeof workshopDetail> {
         referenceNo: "REG-001",
         applicationNo: "APP-001",
         attendanceStatus: "unmarked",
+        utNumber: "",
         attendance: undefined,
         sourceForms: ["Registration form"],
         emailStatus: "queued",

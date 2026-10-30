@@ -104,8 +104,8 @@ async function save(snapshot: Snapshot, serialized: string): Promise<void> {
         for (let attempt = 0;; attempt++) {
             try { await rename(temp, statePath()); break; }
             catch (error: any) {
-                if (!["EPERM", "EBUSY", "EACCES"].includes(error.code) || attempt >= 4) throw error;
-                await new Promise(resolve => setTimeout(resolve, 10 * (attempt + 1)));
+                if (!["EPERM", "EBUSY", "EACCES"].includes(error.code) || attempt >= 20) throw error;
+                await new Promise(resolve => setTimeout(resolve, 10 * (attempt + 1) + Math.random() * 10));
             }
         }
         try {

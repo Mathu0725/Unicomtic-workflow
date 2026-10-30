@@ -45,6 +45,7 @@ export default function WorkshopParticipants({
         b.phone,
         b.referenceNo,
         b.applicationNo,
+        b.utNumber,
         ...b.sourceForms,
       ]
         .join(" ")
@@ -271,6 +272,7 @@ export default function WorkshopParticipants({
                 </td>
                 <td className="p-3 text-xs">
                   {b.attendanceStatus}
+                  {b.utNumber && <><br />UT: {b.utNumber}</>}
                   {b.attendance && (
                     <>
                       <br />

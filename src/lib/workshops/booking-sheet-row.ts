@@ -40,6 +40,7 @@ export function workshopBookingSheetRow(db: DatabaseStore, bookingId: string) {
     phone: student.phone,
     whatsapp: student.whatsapp || "",
     nic: student.nic,
+    utNumber: student.ut_number || "",
     district: student.district,
     province: student.province,
     bookingStatus: booking.status,
@@ -54,7 +55,7 @@ export function workshopBookingSheetRow(db: DatabaseStore, bookingId: string) {
     address: workshop.address,
     attendanceStatus: attendance?.status || "unmarked",
     attendanceMarkedAt: attendance?.marked_at || "",
-    studentExamId: attendance?.student_exam_id || "",
+    studentExamId: student.ut_number || attendance?.student_exam_id || "",
     sourceFormIds: formIds.join(", "),
     sourceForms: formIds
       .map((id) => db.customForms.find((item) => item.id === id)?.title || id)
