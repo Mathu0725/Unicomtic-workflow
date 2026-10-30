@@ -161,6 +161,12 @@ export async function processOutbox(limit = 120, timeBudgetMs = 45000, onlyJobId
                 const current = emailCandidates(db, context.stage).find(candidate => candidate.id === context.recordId);
                 if (!current || current.email.toLowerCase() !== String(job.payload.to).toLowerCase()) return { success: false, error: "The candidate record or email address changed after this message was queued. Select the candidate again and compose a new message.", errorCode: "CANDIDATE_CONTACT_CHANGED", failureKind: "permanent" as const };
             }
+            if (job.type === "email" && job.payload.notificationEvent === "form_campaign") {
+                const response = db.formSubmissions.find(item => item.id === job.payload.sourceId && item.form_id === job.payload.formId);
+                const student = db.students.find(item => item.id === response?.student_id);
+                const currentEmail = student?.email || response?.data?.email;
+                if (!response || String(currentEmail || "").trim().toLowerCase() !== String(job.payload.to).trim().toLowerCase()) return { success: false, error: "The form response or registered email changed after scheduling. Review recipients and create a new campaign.", errorCode: "FORM_CAMPAIGN_CONTACT_CHANGED", failureKind: "permanent" as const };
+            }
             if (job.type === "email")
                 return sendEmail({ ...secureCandidateEmail(db, job.payload), smtpAccountId: job.email_account_id, messageId: `<${job.id}@unicom-tic.local>` } as SendEmailPayload);
             const rows = jobs.flatMap(item => item.payload.rows);
@@ -201,7 +207,7 @@ export async function processOutbox(limit = 120, timeBudgetMs = 45000, onlyJobId
                 if (sub) {
                     if (job.type === "sheet")
                         sub.synced_to_sheet = true;
-                    else if (job.payload.notificationEvent !== "staff_alert" && !job.key.includes(":admin:"))
+                    else if (job.payload.notificationEvent === "submission_confirmation" || !job.payload.notificationEvent && !job.key.includes(":admin:"))
                         sub.email_sent = true;
                 }
                 const decision = state.selectionDecisions.find(d => d.id === job.payload.decisionId);

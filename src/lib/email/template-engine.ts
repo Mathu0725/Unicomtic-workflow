@@ -18,7 +18,7 @@ export function renderEmailTemplate(
   subjectTemplate: string,
   htmlTemplate: string,
   textTemplate: string | null | undefined,
-  variables: Record<string, string | number | undefined | null>
+  variables: Record<string, string | number | boolean | undefined | null>
 ): RenderResult {
   const allText = `${subjectTemplate} ${htmlTemplate} ${textTemplate || ""}`;
   const requiredVars = extractTemplateVariables(allText);
