@@ -116,6 +116,12 @@ export interface Workshop {
   created_at: string;
   capacity?: number;
   booking_deadline?: string;
+  updated_at?: string;
+  reminders_enabled?: boolean;
+  details_updated_at?: string;
+  confirmation_enabled?: boolean;
+  reminder_template?: "workshop_reminder" | "workshop_update";
+  confirmation_template?: "workshop_booking" | "workshop_update";
   google_sheets_config?: { enabled: boolean; sheet_id: string; sheet_name: string; auto_sync: boolean; version: string; updated_at: string };
 }
 
@@ -348,7 +354,19 @@ export interface CustomForm {
   submissions_count: number;
   created_at: string;
   updated_at: string;
-  workshop_config?: { enabled: boolean; required: boolean; workshop_ids: string[] };
+  workshop_config?: WorkshopFormConfig;
+}
+
+export interface WorkshopFormConfig {
+  enabled: boolean;
+  required: boolean;
+  workshop_ids: string[];
+  selection_mode?: "explicit" | "legacy";
+  hidden_ids?: string[];
+  label?: string;
+  help_text?: string;
+  empty_message?: string;
+  show_remaining?: boolean;
 }
 
 export interface FormSubmission {
@@ -364,6 +382,7 @@ export interface FormSubmission {
   registration_id?: string;
   application_id?: string;
   workshop_id?: string;
+  workshop_snapshot?: { title: string; start_time: string; venue: string };
   external_id?: string;
   form_version?: string;
   field_labels?: Record<string, string>;

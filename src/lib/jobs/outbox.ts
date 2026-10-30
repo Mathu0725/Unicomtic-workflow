@@ -14,6 +14,7 @@ import { secureCandidateEmail } from "../security/candidate-access";
 import { defaultEmailAccountId, GMAIL_ACCOUNT } from "../email/accounts";
 import { sanitizeEmailHtml } from "../email/sanitize";
 import { workshopBookingSheetRow } from "../workshops/booking-sheet-row";
+import { workshopEmailProblem } from "../workshops/email-policy";
 export function enqueue(db: DatabaseStore, type: OutboxJob["type"], key: string, payload: Record<string, any>) {
     const existing = db.outbox.find(j => j.key === key);
     if (existing)
@@ -54,6 +55,10 @@ export async function processOutbox(limit = 120, timeBudgetMs = 45000, onlyJobId
             break;
         const claim = await commit(db => {
             const now = Date.now();
+            for (const item of db.outbox.filter(j => j.type === "email" && j.status === "queued")) {
+                const problem = workshopEmailProblem(db, item, now);
+                if (problem) { item.status = "blocked"; item.error_code = "WORKSHOP_MESSAGE_SUPERSEDED"; item.error = problem; item.repair_action = "review_workshop"; }
+            }
             if (!db.queueControl.last_worker_at || now - db.queueControl.last_worker_at > 30000) db.queueControl.last_worker_at = now;
             if (db.outbox.some(j => j.status === "queued" && j.payload.admissionsReminder)) {
                 const candidates = new Map(reminderCohorts(db, now).candidates.map(c => [c.id, c]));
@@ -148,6 +153,8 @@ export async function processOutbox(limit = 120, timeBudgetMs = 45000, onlyJobId
         try {
             const db = await readDatabase();
             result = await databaseContext.run(db, async () => {
+            const workshopProblem = workshopEmailProblem(db, job);
+            if (workshopProblem) return { success: false, error: workshopProblem, errorCode: "WORKSHOP_MESSAGE_SUPERSEDED", failureKind: "permanent" as const };
             if (job.type === "email" && job.sender_identity !== emailSender(db, job.email_account_id)) return { success: false, error: "The sending account changed. This email will retry using the selected account's allowance.", errorCode: "EMAIL_SENDER_CHANGED", failureKind: "temporary" as const };
             if (job.type === "email" && job.payload.candidateMessage) {
                 const context = job.payload.candidateMessage;

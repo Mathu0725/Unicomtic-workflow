@@ -34,21 +34,31 @@ export default function AdminAttendancePage() {
       .then((data) => {
         if (data.workshops && data.workshops.length > 0) {
           setWorkshops(data.workshops);
-          setSelectedWorkshopId(data.workshops[0].id);
+          const requested = new URLSearchParams(window.location.search).get("workshopId");
+          setSelectedWorkshopId(data.workshops.some((w: any) => w.id === requested) ? requested! : data.workshops[0].id);
         }
       }).catch(e => setPageError(e.message));
 
-    loadRecentAttendance();
   }, []);
 
-  const loadRecentAttendance = () => {
-    apiResponse("/api/admin/attendance")
+  useEffect(() => {
+    setCandidates([]);
+    setNotification(null);
+    if (!selectedWorkshopId) return;
+    const controller = new AbortController();
+    void loadRecentAttendance(controller.signal);
+    return () => controller.abort();
+  }, [selectedWorkshopId]);
+
+  const loadRecentAttendance = (signal?: AbortSignal) => {
+    if (!selectedWorkshopId) return;
+    return apiResponse("/api/admin/attendance?workshopId=" + encodeURIComponent(selectedWorkshopId), {signal})
       .then((res) => res.json())
       .then((data) => {
-        if (data.attendance) {
+        if (!signal?.aborted && data.attendance) {
           setRecentAttendance(data.attendance);
         }
-      }).catch(e => setPageError(e.message));
+      }).catch(e => { if (!signal?.aborted) setPageError(e.message); });
   };
 
   const handleSearch = async (e: React.FormEvent) => {
@@ -136,6 +146,7 @@ export default function AdminAttendancePage() {
           <label className="text-xs font-bold text-slate-700">Active Workshop:</label>
           <select
             value={selectedWorkshopId}
+            disabled={Boolean(marking) || searching}
             onChange={(e) => setSelectedWorkshopId(e.target.value)}
             className="px-3 py-2 rounded-xl border border-slate-300 text-xs bg-white font-semibold focus:outline-none"
           >

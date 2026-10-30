@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { route, RequestError } from "@/lib/http";
 import { applicationSchema } from "@/lib/validations/application";
 import { getDb } from "@/lib/data/store";
+import { legacyWorkshopConfig } from "@/lib/workshops/legacy";
 import { applicationFor, bookWorkshop, notifySubmission } from "@/lib/admissions/service";
 import { requireCandidateAccess } from "@/lib/security/candidate-access";
 export const POST = route(async (req) => {
@@ -17,7 +18,7 @@ export const POST = route(async (req) => {
     if (!["invited", "applied"].includes(reg.status)) throw new RequestError("An application invitation is required. Contact admissions.", 403);
     const student = db.students.find(s => s.id === reg.student_id)!;
     const app = applicationFor(student, reg, data);
-    bookWorkshop(body.workshopId, student, reg);
+    bookWorkshop(body.workshopId, student, reg, legacyWorkshopConfig(db, reg.campaign_id, "application"));
     notifySubmission(student, reg, app);
     return NextResponse.json({ success: true, referenceNo: reg.reference_no, applicationNo: app.application_no, studentName: student.full_name, notificationStatus: "queued", message: "Application saved. Your notification is queued." });
 }, false, { submission: true, candidate: true });

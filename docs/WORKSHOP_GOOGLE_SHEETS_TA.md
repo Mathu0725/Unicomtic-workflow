@@ -3,8 +3,8 @@
 ## பயன்படுத்தும் முறை
 
 1. **Google Integrations**-ல் admissions Google account connect ஆகியிருக்க வேண்டும். அந்த account-க்கு Editor access உள்ள spreadsheet-ஐ பயன்படுத்துங்கள்.
-2. **Workshops → Plan workshop** மூலம் session உருவாக்குங்கள். ஏற்கனவே உள்ள workshop-க்கும் இந்த வசதியை பயன்படுத்தலாம்.
-3. Workshop card-ல் **Connect Google Sheet** திறக்கவும். Spreadsheet URL / ID உள்ளிட்டு **Check spreadsheet & load tabs** அழுத்தவும். தேவையெனில் **Create a new spreadsheet** மூலம் புதிய file உருவாக்கலாம்.
+2. **Workshops → Create workshop** மூலம் session உருவாக்குங்கள். ஏற்கனவே உள்ள workshop-க்கும் இந்த வசதியை பயன்படுத்தலாம்.
+3. அந்த workshop-ஐத் திறந்து **Google Sheet → Connect Google Sheet** செல்லவும். Spreadsheet URL / ID உள்ளிட்டு **Check spreadsheet & load tabs** அழுத்தவும். தேவையெனில் **Create a new spreadsheet** மூலம் புதிய file உருவாக்கலாம்.
 4. **Workshop tab name**-ல் அந்த workshop-க்கு தனியான பெயர் கொடுக்கவும். Workshop பெயர் + ID அடிப்படையில் ஒரு பெயர் தயாராக இருக்கும்; அதை மாற்றலாம். Existing tabs பட்டியலில் dedicated workshop tab இருந்தால் தேர்வு செய்யலாம்.
 5. **Automatically sync new bookings and attendance updates** On வைத்தால் புதிய bookings, attendance, application reference மற்றும் email corrections queue மூலம் sync ஆகும்.
 6. **Sync existing bookings when saving** On வைத்தால் ஏற்கனவே book செய்தவர்களும் சேர்க்கப்படுவார்கள். **Save Sheet connection** அழுத்தவும்.
@@ -35,13 +35,13 @@ Portal உருவாக்காத additional columns-ல் staff எழு�
 
 Booking மற்றும் export job ஒரே database transaction-ல் save ஆகின்றன. Google தற்காலிகமாக unavailable ஆனாலும் booking save ஆகும். Existing protected worker பொதுவாக ஒவ்வொரு நிமிடமும் due jobs-ஐ process செய்கிறது; backlog, Google quota மற்றும் retry காரணமாக actual sync தாமதமாகலாம்.
 
-ஒவ்வொரு workshop card-லும் **synced / pending / need attention** count மற்றும் last sync நேரம் இருக்கும். **Export activity** அந்த workshop-ன் Google Sheets jobs-ஐ filter செய்து காட்டும்.
+ஒவ்வொரு workshop-ன் **Google Sheet** பகுதியில் **synced / pending / need attention** count மற்றும் last sync நேரம் இருக்கும். **Export activity** அந்த workshop-ன் Google Sheets jobs-ஐ filter செய்து காட்டும்.
 
 - **Auto-sync Off**: புதிய changes தானாக queue ஆகாது; **Sync all bookings** பயன்படுத்தலாம்.
 - **Enable connection Off**: புதிய exports நிற்கும்; spreadsheet-ல் ஏற்கனவே உள்ள rows பாதுகாக்கப்படும்.
 - **Destination மாற்றினால்**: புதிய settings-க்கு version உருவாகும். பழைய destination jobs நிறுத்தப்படும்; புதிய destination-க்கு existing bookings sync செய்யலாம். பழைய spreadsheet rows delete செய்யப்படாது.
 - **Export நடக்கும்போது settings change**: in-flight export முடியும் வரை destination மாற்ற அனுமதிக்கப்படாது.
-- **Cancelled booking**: booking record இருந்தால் அதன் status-உடன் row இருக்கும்; manual resync அதை update செய்யும். இந்த feature புதிய cancellation workflow உருவாக்குவதில்லை.
+- **Cancelled booking**: Participants பகுதியில் cancel செய்தால் original booking பாதுகாக்கப்படும்; auto-sync enabled என்றால் cancelled status queue ஆகும். Move செய்தால் old workshop row-ல் cancelled / moved details மற்றும் new workshop tab-ல் linked booking வரும். **Sync all bookings** மூலமும் reconcile செய்யலாம்.
 
 Google Sheets sync மற்றும் applicant/staff email settings தனித்தனியாக இயங்குகின்றன. Email allowance முடிந்ததால் workshop export நிற்காது.
 

@@ -12,6 +12,9 @@ import { admissionEmailVariables, renderNotification, savedTemplate } from "../e
 import { formRequiresCandidateAccess } from "../forms/access";
 import { extraAnswerProblem, formAvailabilityProblem, uniqueAnswer, visibleFormFields } from "../forms/field-rules";
 import { queueWorkshopBooking } from "../workshops/sheet-sync";
+import { workshopOptions } from "../workshops/policy";
+import { queueWorkshopConfirmation } from "../workshops/notifications";
+import type { WorkshopBooking } from "../data/types";
 export const escaped = (value: any) => String(value ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
 export const normalizeEmail = (value: any) => String(value || "").trim().toLowerCase();
 export const normalizeNic = (value: any) => String(value || "").replace(/\s/g, "").toUpperCase();
@@ -69,12 +72,12 @@ export function applicationFor(student: Student, reg: Registration, data: Record
     audit("APPLICATION_SUBMITTED", "applications", app.id, { applicationNo: app.application_no });
     return app;
 }
-export function availableWorkshops(campaignId?: string, allowedIds?: string[]) {
+export function availableWorkshops(campaignId?: string, selection?: string[] | CustomForm["workshop_config"]) {
     const db = getDb();
-    return db.workshops.filter(w => w.is_active && (!campaignId || w.campaign_id === campaignId) && (!allowedIds?.length || allowedIds.includes(w.id)) && Date.parse(w.start_time) > Date.now() && (!w.booking_deadline || Date.parse(w.booking_deadline) > Date.now())).map(w => {
-        const booked = db.workshopBookings.filter(b => b.workshop_id === w.id && b.status === "confirmed").length;
-        return { id: w.id, title: w.title, start_time: w.start_time, end_time: w.end_time, venue: w.venue, address: w.address, google_maps_url: w.google_maps_url, remaining: w.capacity ? Math.max(0, w.capacity - booked) : null };
-    });
+    const counts = new Map<string, number>();
+    for (const b of db.workshopBookings) if (b.status === "confirmed") counts.set(b.workshop_id, (counts.get(b.workshop_id) || 0) + 1);
+    const config = Array.isArray(selection) ? { enabled: true, required: false, workshop_ids: selection } : selection;
+    return workshopOptions(db.workshops.map(w => ({ ...w, bookedCount: counts.get(w.id) || 0 })), campaignId, config);
 }
 export function bookWorkshop(workshopId: string | undefined, student: Student, reg: Registration, config?: CustomForm["workshop_config"]) {
     if (!workshopId) {
@@ -84,8 +87,8 @@ export function bookWorkshop(workshopId: string | undefined, student: Student, r
     }
     if (config && !config.enabled)
         throw new RequestError("Workshop booking is not enabled for this form.");
-    const db = getDb(), workshop = availableWorkshops(reg.campaign_id, config?.workshop_ids).find(w => w.id === workshopId);
-    if (!workshop)
+    const db = getDb(), workshop = availableWorkshops(reg.campaign_id, config).find(w => w.id === workshopId);
+    if (!workshop || workshop.unavailableReason === "Booking closed")
         throw new RequestError("This workshop is closed or unavailable.", 409, { code: "WORKSHOP_UNAVAILABLE", action: "refresh_workshops" });
     const existing = db.workshopBookings.find(b => b.workshop_id === workshopId && b.student_id === student.id && b.status === "confirmed");
     if (existing) {
@@ -94,11 +97,11 @@ export function bookWorkshop(workshopId: string | undefined, student: Student, r
     }
     if (workshop.remaining !== null && workshop.remaining < 1)
         throw new RequestError("This workshop is full. Select another workshop.", 409, { code: "WORKSHOP_FULL", action: "refresh_workshops" });
-    const booking = { id: randomUUID(), workshop_id: workshopId, student_id: student.id, registration_id: reg.id, status: "confirmed" as const, created_at: now() };
+    const booking: WorkshopBooking = { id: randomUUID(), workshop_id: workshopId, student_id: student.id, registration_id: reg.id, status: "confirmed", created_at: now() };
     db.workshopBookings.push(booking);
+    audit("WORKSHOP_BOOKED", "workshop_bookings", booking.id, { workshopId, registrationId: reg.id });
     queueWorkshopBooking(db,booking.id);
-    const when = new Date(workshop.start_time).toLocaleString("en-GB", { timeZone: "Asia/Colombo" });
-    enqueue(db, "email", `booking:${booking.id}`, { to: student.email, toName: student.full_name, ...renderNotification(db, "workshop_booking", { ...admissionEmailVariables(db, student, reg), workshop: workshop.title, date: when, venue: workshop.venue, address: workshop.address }, workshop.google_maps_url || undefined) });
+    queueWorkshopConfirmation(db, booking);
     return booking;
 }
 export function submissionSheetRow(student: Student, reg: Registration, app?: Application, sub?: FormSubmission) {
@@ -204,9 +207,15 @@ export function submitCustomForm(form: CustomForm, input: Record<string, any>, o
     if (db.formSubmissions.some(s => s.form_id === form.id && s.student_id === student.id))
         throw new RequestError("You have already submitted this form.", 409, { isDuplicate: true, referenceNo: reg.reference_no });
     const app = form.type === "application" ? applicationFor(student, reg, data) : undefined;
-    const booking = bookWorkshop(options.workshopId, student, reg, form.workshop_config);
+    const booking = bookWorkshop(options.workshopId, student, reg, form.workshop_config || { enabled: false, required: false, workshop_ids: [] });
     const submission: FormSubmission = { id: randomUUID(), form_id: form.id, form_version: form.updated_at, field_labels: Object.fromEntries(activeFields.map(field => [field.id, field.label])), accepted_declarations: activeFields.filter(f => f.type === "terms" && data[f.id] === true).map(f => ({ fieldId: f.id, label: f.label })), reference_no: app?.application_no || reg.reference_no, data, student_id: student.id, registration_id: reg.id, application_id: app?.id, workshop_id: booking?.workshop_id, external_id: options.externalId, synced_to_sheet: false, email_sent: false, created_at: now() };
     db.formSubmissions.push(submission);
+    if (booking) {
+        booking.source_submission_ids = [...new Set([...(booking.source_submission_ids || []), submission.id])];
+        const selected = db.workshops.find(w => w.id === booking.workshop_id)!;
+        submission.workshop_snapshot = { title: selected.title, start_time: selected.start_time, venue: selected.venue };
+        queueWorkshopBooking(db, booking.id);
+    }
     for (const [fieldId, upload] of documents) {
         upload.submission_id = submission.id;
         submission.data[fieldId] = documentUrl(upload.drive_file_id);
