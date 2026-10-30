@@ -52,11 +52,17 @@ export default function FormBuilderEditor({ id }: { id: string }) {
     [preview, setPreview] = useState(false),
     [notice, setNotice] = useState(""),
     [workshops, setWorkshops] = useState<Workshop[]>([]),
-    [resourceError, setResourceError] = useState("");
+    [resourceError, setResourceError] = useState(""),
+    [workshopsLoaded, setWorkshopsLoaded] = useState(false);
   useEffect(() => {
     const controller = new AbortController();
     api("/api/admin/workshops?summary=1", undefined, "GET", controller.signal)
-      .then((result) => setWorkshops(result.workshops))
+      .then((result) => {
+        if (!controller.signal.aborted) {
+          setWorkshops(result.workshops);
+          setWorkshopsLoaded(true);
+        }
+      })
       .catch((error) => {
         if (!controller.signal.aborted) setResourceError(error.message);
       });
@@ -466,6 +472,16 @@ export default function FormBuilderEditor({ id }: { id: string }) {
                       </details>
                     ),
                   )}
+                  <button
+                    type="button"
+                    className="mt-4 w-full rounded-lg border border-blue-200 p-3 text-left text-xs font-semibold text-blue-700"
+                    onClick={() => {
+                      setMode("settings");
+                      setSection("workshops");
+                    }}
+                  >
+                    Built-in block · Workshop selection
+                  </button>
                 </aside>
                 <section
                   aria-label="Form canvas"
@@ -738,13 +754,26 @@ export default function FormBuilderEditor({ id }: { id: string }) {
                     Workshop choices could not be loaded: {resourceError}
                   </p>
                 )}
-                <FormSettings
-                  form={form}
-                  values={values}
-                  onChange={change}
-                  section={section}
-                  workshops={workshops}
-                />
+                {section === "workshops" &&
+                  !workshopsLoaded &&
+                  !resourceError && (
+                    <p role="status">Loading workshop choices…</p>
+                  )}
+                {(section !== "workshops" || workshopsLoaded) && (
+                  <FormSettings
+                    form={form}
+                    values={values}
+                    onChange={change}
+                    section={section}
+                    workshops={workshops}
+                    onWorkshopCreated={(workshop) =>
+                      setWorkshops((current) => [
+                        ...current.filter((w) => w.id !== workshop.id),
+                        workshop,
+                      ])
+                    }
+                  />
+                )}
               </div>
             </div>
           )}

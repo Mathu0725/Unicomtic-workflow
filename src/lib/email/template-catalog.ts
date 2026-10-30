@@ -2,7 +2,7 @@ import { reminderCopy, reminderKinds } from "../reminders/templates";
 
 export const notificationTemplateIds = [
   "registration_confirmation", "application_confirmation", "form_confirmation", "admin_submission",
-  "application_invitation", "workshop_booking", "workshop_reminder", "interview_invitation",
+  "application_invitation", "workshop_booking", "workshop_reminder", "workshop_update", "interview_invitation",
   "selection_selected", "selection_waiting_list", "selection_unsuccessful", "candidate_access",
   "application_pending", "workshop_unbooked", "workshop_missed", "candidate_message", "test_notification",
 ] as const;
@@ -27,6 +27,8 @@ export const notificationTemplates: TemplateDefinition[] = [
     subject: "Workshop booking confirmed — {{workshop}}", body: "Dear {{name}},\n\nYour workshop seat is confirmed.\n\n{{workshop}}\n{{date}} (Sri Lanka)\n{{venue}}\n{{address}}\n\nReference: {{reference}}. Bring your NIC.", actionLabel: "View location", linkNotice: "A location link is included when the workshop has a Google Maps URL." },
   { id: "workshop_reminder", title: "Scheduled workshop reminder", group: "Workshops", description: "Used by the scheduled queue before a booked workshop.", variables: [...identity, "workshop", "date", "venue", "address", "daysBefore"],
     subject: "Workshop reminder — {{workshop}}", body: "Dear {{name}},\n\nYour workshop {{workshop}} is scheduled for {{date}} (Sri Lanka).\nVenue: {{venue}}\n{{address}}\n\nReference: {{reference}}. Bring your NIC.", actionLabel: "View location" },
+  { id: "workshop_update", title: "Workshop details update", group: "Workshops", description: "Review and send current workshop details to booked participants.", variables: [...identity, "workshop", "date", "venue", "address", "daysBefore"],
+    subject: "Workshop update — {{workshop}}", body: "Dear {{name}},\n\nPlease check the current details for your workshop.\n\n{{workshop}}\n{{date}} (Sri Lanka)\n{{venue}}\n{{address}}\n\nReference: {{reference}}.", actionLabel: "View location" },
   { id: "interview_invitation", title: "Interview invitation", group: "Assessments", description: "Sent when a candidate is assigned to an interview.", variables: [...identity, "interview", "date", "venue"],
     subject: "Interview Invitation - Unicom TIC Admissions [{{interview}}]", body: "Dear {{name}},\n\nYou are invited for the {{institution}} Admissions Interview.\n\nSession: {{interview}}\nVenue: {{venue}}\nDate & time: {{date}} (Sri Lanka)" },
   { id: "selection_selected", title: "Final result — selected", group: "Assessments", description: "Used when staff queues a selected candidate's final result.", variables: [...identity, "studentId", "rank"],

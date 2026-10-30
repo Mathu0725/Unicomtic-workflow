@@ -29,6 +29,13 @@ export interface WorkshopBooking {
     registration_id: string;
     status: "confirmed" | "cancelled";
     created_at: string;
+    updated_at?: string;
+    source_submission_ids?: string[];
+    cancelled_at?: string;
+    cancelled_by?: string;
+    cancellation_reason?: string;
+    moved_from?: string;
+    moved_to?: string;
 }
 export interface OutboxJob {
     id: string;

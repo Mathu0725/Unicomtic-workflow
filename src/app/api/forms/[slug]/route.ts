@@ -58,12 +58,17 @@ export const GET = route(
           workshops: form.workshop_config?.enabled
             ? availableWorkshops(
                 form.campaign_id,
-                form.workshop_config.workshop_ids,
+                form.workshop_config,
               )
             : [],
           workshopRequired:
             form.workshop_config?.enabled && form.workshop_config.required,
           workshopEnabled: form.workshop_config?.enabled,
+          workshopConfig: form.workshop_config ? {
+            enabled: form.workshop_config.enabled, required: form.workshop_config.required,
+            label: form.workshop_config.label, help_text: form.workshop_config.help_text,
+            empty_message: form.workshop_config.empty_message, show_remaining: form.workshop_config.show_remaining,
+          } : undefined,
           googleFormConfig: {
             enabled: form.google_form_config?.enabled,
             formUrl: form.google_form_config?.form_url,

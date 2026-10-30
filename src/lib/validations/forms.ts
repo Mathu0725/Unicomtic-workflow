@@ -125,7 +125,13 @@ export const workshopConfigSchema = z.object({
   enabled: z.boolean(),
   required: z.boolean(),
   workshop_ids: z.array(z.string()).max(100),
-});
+  selection_mode: z.enum(["explicit", "legacy"]).optional(),
+  hidden_ids: z.array(z.string()).max(100).optional(),
+  label: z.string().trim().min(1).max(100).optional(),
+  help_text: z.string().max(500).optional(),
+  empty_message: z.string().max(500).optional(),
+  show_remaining: z.boolean().optional(),
+}).refine(config => (config.hidden_ids || []).every(id => config.workshop_ids.includes(id)), "Hidden workshops must be attached to this form.");
 export const sheetsConfigSchema = z.object({
   enabled: z.boolean(),
   disabled: z.boolean().optional(),

@@ -19,8 +19,9 @@ export function workshopBookingSheetRow(db: DatabaseStore, bookingId: string) {
     );
   const submissions = db.formSubmissions.filter(
       (item) =>
-        item.workshop_id === workshop.id &&
-        item.registration_id === registration.id,
+        booking.source_submission_ids?.includes(item.id) ||
+        (item.workshop_id === workshop.id &&
+          item.registration_id === registration.id),
     ),
     formIds = [...new Set(submissions.map((item) => item.form_id))];
   return {
@@ -43,6 +44,10 @@ export function workshopBookingSheetRow(db: DatabaseStore, bookingId: string) {
     province: student.province,
     bookingStatus: booking.status,
     bookedAt: booking.created_at,
+    cancelledAt: booking.cancelled_at || "",
+    cancellationReason: booking.cancellation_reason || "",
+    movedFromBooking: booking.moved_from || "",
+    movedToBooking: booking.moved_to || "",
     workshopStartsAt: workshop.start_time,
     workshopEndsAt: workshop.end_time,
     venue: workshop.venue,

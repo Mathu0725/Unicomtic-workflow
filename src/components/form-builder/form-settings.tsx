@@ -1,5 +1,6 @@
 "use client";
 import dynamic from "next/dynamic";
+import WorkshopSettings from "./workshop-settings";
 import Link from "next/link";
 import type { CustomForm, Workshop } from "@/lib/data/store";
 import type { FormEditorValues } from "@/lib/forms/editor";
@@ -72,12 +73,14 @@ export default function FormSettings({
   onChange,
   section,
   workshops,
+  onWorkshopCreated,
 }: {
   form: CustomForm;
   values: FormEditorValues;
   onChange: (patch: Partial<FormEditorValues>, group?: string) => void;
   section: string;
   workshops: Workshop[];
+  onWorkshopCreated?: (w: Workshop) => void;
 }) {
   const messages = resolveFormMessages(values.messages),
     display = resolveFormMessageDisplay(values.message_display);
@@ -289,75 +292,16 @@ export default function FormSettings({
         </p>
       </SettingsCard>
     );
-  if (section === "workshops") {
-    const config = values.workshop_config || {
-      enabled: false,
-      required: false,
-      workshop_ids: [],
-    };
+  if (section === "workshops")
     return (
-      <SettingsCard
-        title="Workshop selection"
-        description="Let applicants choose a session. Capacity and availability are checked when the response is saved."
-      >
-        <Toggle
-          label="Include workshop choices"
-          checked={config.enabled}
-          onChange={(enabled) =>
-            onChange({ workshop_config: { ...config, enabled } })
-          }
-        />
-        <Toggle
-          label="Require a workshop"
-          checked={config.required}
-          onChange={(required) =>
-            onChange({ workshop_config: { ...config, required } })
-          }
-        />
-        <div className="space-y-2">
-          {workshops
-            .filter((workshop) => workshop.campaign_id === form.campaign_id)
-            .map((workshop) => (
-              <label
-                key={workshop.id}
-                className="flex items-start gap-3 rounded-xl border border-slate-200 p-3 text-sm"
-              >
-                <input
-                  type="checkbox"
-                  checked={config.workshop_ids.includes(workshop.id)}
-                  onChange={(event) =>
-                    onChange({
-                      workshop_config: {
-                        ...config,
-                        workshop_ids: event.target.checked
-                          ? [...config.workshop_ids, workshop.id]
-                          : config.workshop_ids.filter(
-                              (id) => id !== workshop.id,
-                            ),
-                      },
-                    })
-                  }
-                  className="mt-1 accent-blue-600"
-                />
-                <span>
-                  <strong>{workshop.title}</strong>
-                  <span className="mt-1 block text-xs text-slate-500">
-                    {new Date(workshop.start_time).toLocaleString()} ·{" "}
-                    {workshop.capacity || "Unlimited"} seats
-                  </span>
-                </span>
-              </label>
-            ))}
-        </div>
-        <p className="text-xs text-slate-500">
-          Leave all unchecked to show available sessions in this intake.
-        </p>
-        <Link href="/admin/workshops" className={buttonClass}>
-          Plan a workshop →
-        </Link>
-      </SettingsCard>
+      <WorkshopSettings
+        form={form}
+        values={values}
+        workshops={workshops}
+        onChange={onChange}
+        onCreated={onWorkshopCreated}
+      />
     );
-  }
   return (
     <div className="space-y-5">
       <SettingsCard title="Form content">

@@ -3,7 +3,7 @@ import { z } from "zod";
 import { route, RequestError } from "@/lib/http";
 import { getDb } from "@/lib/data/store";
 import { formDraftSchema, formEditableSchema } from "@/lib/validations/forms";
-import { audit } from "@/lib/admissions/service";
+import { audit, availableWorkshops } from "@/lib/admissions/service";
 import { formLinkTaken } from "@/lib/forms/public-links";
 import { editorValues } from "@/lib/forms/editor";
 import { fieldIdentityKeys, identityKeys } from "@/lib/forms/field-rules";
@@ -53,6 +53,12 @@ export const PATCH = route(
       })
       .safeParse(await req.json());
     if (!parsed.success) throw new RequestError(parsed.error.issues[0].message);
+    const workshopConfig = parsed.data.action === "save_draft" ? parsed.data.draft?.workshop_config : parsed.data.workshop_config;
+    if (workshopConfig?.workshop_ids.some(id => !getDb().workshops.some(w => w.id === id && w.campaign_id === form.campaign_id)))
+      throw new RequestError("Choose workshops from this form's intake.");
+    const effectiveConfig = workshopConfig || form.workshop_config;
+    if (parsed.data.action === "publish" && (parsed.data.status || form.status || "published") === "published" && effectiveConfig?.enabled && effectiveConfig.required && !availableWorkshops(form.campaign_id, effectiveConfig).some(w => w.bookable))
+      throw new RequestError("The required workshop block has no open session with seats. Attach an available workshop or make selection optional before publishing.");
     if (parsed.data.action) {
       if (
         parsed.data.expectedUpdatedAt !== form.updated_at ||

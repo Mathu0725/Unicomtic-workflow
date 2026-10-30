@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useParams } from "next/navigation";
+import WorkshopSelection from "@/components/workshop-selection";
 import FormInstructions from "@/components/form-instructions";
 import FormSubmitMessages from "@/components/form-submit-messages";
 import {
@@ -51,6 +52,52 @@ export default function PublicCustomFormPage() {
   const [draftRestored, setDraftRestored] = useState(false);
   const [lastSaved, setLastSaved] = useState<string | null>(null);
   const [draftError, setDraftError] = useState("");
+  const [availabilityError, setAvailabilityError] = useState("");
+
+  useEffect(() => {
+    if (!form?.workshopEnabled || submitted) return;
+    let active = true,
+      inFlight = false;
+    const controller = new AbortController();
+    const refreshChoices = async () => {
+      if (inFlight || document.visibilityState === "hidden") return;
+      inFlight = true;
+      try {
+        const response = await apiResponse(`/api/forms/${slug}`, {
+          signal: controller.signal,
+        });
+        const result = await readJson(response);
+        if (!active) return;
+        if (result.form.version !== form.version) {
+          setAvailabilityError(
+            "This form changed. Use Refresh form & workshop availability to review the current questions.",
+          );
+          return;
+        }
+        setForm((current: any) =>
+          current?.version === result.form.version
+            ? { ...current, workshops: result.form.workshops }
+            : current,
+        );
+        setAvailabilityError("");
+      } catch {
+        if (active)
+          setAvailabilityError(
+            "Workshop availability could not refresh. Your answers are preserved; seats are checked when you submit.",
+          );
+      } finally {
+        inFlight = false;
+      }
+    };
+    const timer = setInterval(() => void refreshChoices(), 30000);
+    window.addEventListener("focus", refreshChoices);
+    return () => {
+      active = false;
+      controller.abort();
+      clearInterval(timer);
+      window.removeEventListener("focus", refreshChoices);
+    };
+  }, [slug, form?.version, form?.workshopEnabled, submitted]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -97,7 +144,7 @@ export default function PublicCustomFormPage() {
                   ...Object.fromEntries(
                     Object.entries(parsed).filter(
                       ([id]) =>
-                        id === "workshopId" ||
+                        (id === "workshopId" && data.form.workshopEnabled) ||
                         data.form.fields.some((f: any) => f.id === id),
                     ),
                   ),
@@ -166,7 +213,12 @@ export default function PublicCustomFormPage() {
                 .map((field: any) => [field.id, ""]),
             )
           : {};
-      setFormData((current) => ({ ...current, ...declarations, ...documents }));
+      setFormData((current) => ({
+        ...current,
+        ...declarations,
+        ...documents,
+        ...(!data.form.workshopEnabled ? { workshopId: "" } : {}),
+      }));
       setForm(data.form);
     } catch (e: any) {
       if (!controller.signal.aborted)
@@ -267,7 +319,9 @@ export default function PublicCustomFormPage() {
     try {
       const res = await submitRequest(`/api/forms/${slug}`, {
         data: formData,
-        workshopId: formData.workshopId || undefined,
+        workshopId: form.workshopEnabled
+          ? formData.workshopId || undefined
+          : undefined,
         expectedFormVersion: form.version,
       });
 
@@ -513,53 +567,22 @@ export default function PublicCustomFormPage() {
                 ))}
             </div>
 
+            {availabilityError && (
+              <p role="status" className="text-sm text-amber-800">
+                {availabilityError}
+              </p>
+            )}
             {form.workshopEnabled && (
-              <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-4 space-y-2">
-                <label
-                  className="block font-bold text-sm"
-                  htmlFor="selected-workshop"
-                >
-                  Select your workshop {form.workshopRequired && "*"}
-                </label>
-                <select
-                  id="selected-workshop"
-                  required={form.workshopRequired}
-                  value={formData.workshopId || ""}
-                  onChange={(e) =>
-                    handleInputChange("workshopId", e.target.value)
-                  }
-                  className="w-full border border-slate-300 rounded-lg p-3 bg-white text-sm"
-                >
-                  <option value="">Choose a workshop</option>
-                  {(form.workshops || []).map((w: any) => (
-                    <option
-                      key={w.id}
-                      value={w.id}
-                      disabled={w.remaining === 0}
-                    >
-                      {w.title} · {new Date(w.start_time).toLocaleString()} ·{" "}
-                      {w.venue} ·{" "}
-                      {w.remaining === null
-                        ? "Open"
-                        : `${w.remaining} seats left`}
-                    </option>
-                  ))}
-                </select>
-                {!form.workshops?.length && (
-                  <p className="text-xs text-amber-800">
-                    No bookable workshops are available. Please contact
-                    admissions
-                    {form.workshopRequired
-                      ? " before submitting"
-                      : " or choose later"}
-                    .
-                  </p>
-                )}
-                <p className="text-xs text-slate-500">
-                  Your seat is reserved when the complete application is
-                  accepted.
-                </p>
-              </div>
+              <WorkshopSelection
+                config={{
+                  ...form.workshopConfig,
+                  enabled: true,
+                  required: Boolean(form.workshopRequired),
+                }}
+                workshops={form.workshops || []}
+                value={formData.workshopId || ""}
+                onChange={(id) => handleInputChange("workshopId", id)}
+              />
             )}
             {/* Submit & Save Notice */}
             <div className="pt-6 border-t border-slate-200 space-y-3">

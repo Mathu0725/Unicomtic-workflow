@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { transaction } from "../data/repository";
 import { enqueue, processOutbox } from "./outbox";
-import { admissionEmailVariables, renderNotification } from "../email/notification-templates";
+import { workshopMessage } from "../workshops/notifications";
 import { AppError } from "../errors/app-error";
 import { recordEvent } from "../observability/logger";
 
@@ -13,15 +13,13 @@ export async function runScheduledQueue() {
         db.queueControl.worker_lease = { id, expires_at: now + 180000 };
         db.queueControl.last_worker_at = now;
         for (const workshop of db.workshops) {
-            if (!workshop.is_active || Date.parse(workshop.start_time) <= now) continue;
+            if (workshop.reminders_enabled === false || Date.parse(workshop.start_time) <= now) continue;
             const hours = (Date.parse(workshop.start_time) - now) / 3600000;
             for (const days of workshop.reminder_schedule.days_before) {
                 if (hours > days * 24 || hours <= (days - 1) * 24) continue;
                 for (const booking of db.workshopBookings.filter(b => b.workshop_id === workshop.id && b.status === "confirmed")) {
                     const student = db.students.find(s => s.id === booking.student_id);
-                    if (student) enqueue(db, "email", `reminder:${booking.id}:${days}:${workshop.start_time}`, {
-                        to: student.email, ...renderNotification(db, "workshop_reminder", { ...admissionEmailVariables(db, student, db.registrations.find(r => r.id === booking.registration_id)), workshop: workshop.title, date: new Date(workshop.start_time).toLocaleString("en-GB", { timeZone: "Asia/Colombo" }), venue: workshop.venue, address: workshop.address, daysBefore: days }, workshop.google_maps_url || undefined),
-                    });
+                    if (student) enqueue(db, "email", `reminder:${booking.id}:${days}:${workshop.start_time}`, workshopMessage(db, booking, "scheduled", days));
                 }
             }
         }

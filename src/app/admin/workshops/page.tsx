@@ -9,227 +9,143 @@ import {
   panelClass,
   Notice,
 } from "@/components/live-data";
-import WorkshopSheetConnection from "@/components/workshop-sheet-connection";
+import WorkshopEditor from "@/components/workshop-editor";
+import type { workshopSummary } from "@/lib/workshops/management";
+type Summary = ReturnType<typeof workshopSummary>;
 export default function WorkshopsPage() {
-  const { data, error, reload } = useLiveData("/api/admin/workshops", 10000);
-  const [campaigns, setCampaigns] = useState<any[]>([]),
+  const { data, error, reload, loading } = useLiveData(
+    "/api/admin/workshops?summary=1",
+    15000,
+  );
+  const [campaigns, setCampaigns] = useState<{ id: string; title: string }[]>(
+      [],
+    ),
     [show, setShow] = useState(false),
-    [busy, setBusy] = useState(false),
-    [failure, setFailure] = useState(""),
-    [message, setMessage] = useState("");
-  const [draft, setDraft] = useState<any>({
-    campaignId: "",
-    title: "",
-    venue: "",
-    address: "",
-    googleMapsUrl: "",
-    startTime: "",
-    endTime: "",
-    bookingDeadline: "",
-    capacity: 50,
-    description: "",
-  });
+    [search, setSearch] = useState(""),
+    [message, setMessage] = useState(""),
+    [failure, setFailure] = useState("");
   useEffect(() => {
-    api("/api/campaigns")
-      .then((d) => {
-        setCampaigns(d.campaigns);
-        setDraft((s: any) => ({ ...s, campaignId: d.campaigns[0]?.id || "" }));
-      })
-      .catch((e) => setFailure(e.message));
-  }, []);
-  const create = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setBusy(true);
-    setFailure("");
-    try {
-      const result = await api("/api/admin/workshops", {
-        ...draft,
-        capacity: Number(draft.capacity),
-        startTime: new Date(draft.startTime).toISOString(),
-        endTime: new Date(draft.endTime).toISOString(),
-        bookingDeadline: draft.bookingDeadline
-          ? new Date(draft.bookingDeadline).toISOString()
-          : undefined,
-        daysBeforeReminders: [3, 1],
+    const controller = new AbortController();
+    api("/api/campaigns", undefined, "GET", controller.signal)
+      .then((d) => setCampaigns(d.campaigns))
+      .catch((e) => {
+        if (!controller.signal.aborted) setFailure(e.message);
       });
-      setMessage(result.message);
-      setShow(false);
-      await reload();
-    } catch (e: any) {
-      setFailure(e.message);
-    } finally {
-      setBusy(false);
-    }
-  };
-  const toggle = async (w: any) => {
-    setBusy(true);
-    try {
-      await api(
-        "/api/admin/workshops",
-        { id: w.id, is_active: !w.is_active, expectedIsActive: w.is_active },
-        "PATCH",
-      );
-      await reload();
-    } catch (e: any) {
-      setFailure(e.message);
-    } finally {
-      setBusy(false);
-    }
-  };
+    return () => controller.abort();
+  }, []);
+  const workshops: Summary[] = data?.workshops || [];
   return (
     <div className="space-y-6">
-      <div className="flex justify-between gap-4">
+      <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <p className="text-xs uppercase font-bold text-blue-600">
+          <p className="text-xs font-bold uppercase text-blue-600">
             Workshop planning
           </p>
-          <h1 className="text-2xl font-extrabold">
-            Sessions & student bookings
-          </h1>
-          <p className="text-sm text-slate-500 mt-2">
-            Plan a date and capacity. Students choose an available session when
-            submitting your form.
+          <h1 className="text-2xl font-extrabold">Workshops</h1>
+          <p className="mt-2 text-sm text-slate-600">
+            Open a workshop to manage its participants, reminders and Google
+            Sheet.
           </p>
         </div>
-        <button className={buttonClass} onClick={() => setShow(!show)}>
-          {show ? "Close planner" : "Plan workshop"}
-        </button>
-      </div>
-      {data?.canManageReminders && (
-        <Link
-          href="/admin/reminders"
-          className="inline-block text-sm font-semibold text-blue-700 underline"
-        >
-          Student reminders: applications, bookings & missed workshops →
-        </Link>
-      )}
+        {data?.canManage && (
+          <button className={buttonClass} onClick={() => setShow(!show)}>
+            {show ? "Close creator" : "Create workshop"}
+          </button>
+        )}
+      </header>
       <Notice error>{failure || error}</Notice>
       <Notice>{message}</Notice>
-      {show && (
-        <form className={panelClass} onSubmit={create}>
-          <h2 className="text-lg font-bold">New workshop</h2>
-          <div className="grid sm:grid-cols-2 gap-4">
-            <label className="text-sm font-semibold">
-              Intake
-              <select
-                className={`${inputClass} mt-1`}
-                value={draft.campaignId}
-                onChange={(e) =>
-                  setDraft({ ...draft, campaignId: e.target.value })
-                }
-              >
-                {campaigns.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.title}
-                  </option>
-                ))}
-              </select>
-            </label>
-            {[
-              ["title", "Workshop title", "text"],
-              ["venue", "Venue", "text"],
-              ["address", "Full address", "text"],
-              ["startTime", "Starts (your local time)", "datetime-local"],
-              ["endTime", "Ends (your local time)", "datetime-local"],
-              ["capacity", "Seat capacity", "number"],
-              [
-                "bookingDeadline",
-                "Booking deadline (optional)",
-                "datetime-local",
-              ],
-              ["googleMapsUrl", "Google Maps URL (optional)", "url"],
-            ].map(([key, label, type]) => (
-              <label key={key} className="text-sm font-semibold">
-                {label}
-                <input
-                  className={`${inputClass} mt-1`}
-                  required={!["bookingDeadline", "googleMapsUrl"].includes(key)}
-                  min={type === "number" ? 1 : undefined}
-                  type={type}
-                  value={draft[key]}
-                  onChange={(e) =>
-                    setDraft({ ...draft, [key]: e.target.value })
-                  }
-                />
-              </label>
-            ))}
-          </div>
-          <button disabled={busy} className={buttonClass}>
-            {busy ? "Saving…" : "Create workshop"}
-          </button>
-        </form>
+      {show && data?.canManage && campaigns.length > 0 && (
+        <section className={panelClass}>
+          <WorkshopEditor
+            campaigns={campaigns}
+            onCancel={() => setShow(false)}
+            onSaved={async (w) => {
+              setShow(false);
+              setMessage(w.title + " created. Open it to attach a form.");
+              await reload();
+            }}
+          />
+        </section>
       )}
-      <div className="grid lg:grid-cols-2 gap-5">
-        {data?.workshops.map((w: any) => (
-          <section key={w.id} className={panelClass}>
-            <div className="flex justify-between gap-4">
-              <h2 className="text-lg font-bold">{w.title}</h2>
-              <span className="text-xs font-bold text-blue-600">
-                {w.is_active ? "Open" : "Closed"}
-              </span>
-            </div>
-            <p className="text-sm">
-              {new Date(w.start_time).toLocaleString()} –{" "}
-              {new Date(w.end_time).toLocaleTimeString()}
-              <br />
-              {w.venue}
-              <br />
-              {w.address}
-            </p>
-            <p className="font-semibold text-sm">
-              {w.bookings.length} booked ·{" "}
-              {w.capacity
-                ? Math.max(0, w.capacity - w.bookings.length)
-                : "Unlimited"}{" "}
-              seats available · {w.totalAttended} attended
-            </p>
-            <details>
-              <summary className="cursor-pointer text-blue-600 text-sm">
-                View booked students ({w.bookings.length})
-              </summary>
-              <div className="overflow-auto">
-                <table className="w-full text-xs mt-3">
-                  <tbody>
-                    {w.bookings.map((b: any) => (
-                      <tr key={b.id} className="border-t">
-                        <td className="py-2">
-                          {b.studentName}
-                          <br />
-                          {b.email}
-                          <br />
-                          {b.phone} · {b.district}
-                        </td>
-                        <td>
-                          {b.referenceNo}
-                          <br />
-                          {b.attendanceStatus}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+      {loading && <p role="status">Loading workshops…</p>}
+      <label className="block text-sm font-semibold">
+        Find a workshop
+        <input
+          type="search"
+          className={inputClass + " mt-2"}
+          placeholder="Name, intake or venue"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+      </label>
+      <p className="text-sm text-slate-500">
+        {workshops.length} workshops · Each workshop has its own participant
+        list and emails.
+      </p>
+      <div className="grid gap-4 lg:grid-cols-2">
+        {workshops
+          .filter((w) =>
+            [w.title, w.venue, w.campaignTitle]
+              .join(" ")
+              .toLowerCase()
+              .includes(search.toLowerCase()),
+          )
+          .map((w) => (
+            <article key={w.id} className={panelClass}>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs text-slate-500">{w.campaignTitle}</p>
+                  <h2 className="text-lg font-bold">{w.title}</h2>
+                </div>
+                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs">
+                  {Date.parse(w.start_time) <= Date.now()
+                    ? "Started / completed"
+                    : !w.is_active ||
+                        (w.booking_deadline &&
+                          Date.parse(w.booking_deadline) <= Date.now())
+                      ? "Bookings closed"
+                      : w.remaining === 0
+                        ? "Full"
+                        : "Bookings open"}
+                </span>
               </div>
-            </details>
-            <button
-              className="text-blue-600 font-semibold text-sm"
-              disabled={busy}
-              onClick={() => toggle(w)}
-            >
-              {w.is_active ? "Close new bookings" : "Reopen bookings"}
-            </button>
-            {data.canManageSheets && (
-              <WorkshopSheetConnection
-                workshop={w}
-                googleConnected={data.googleConnected}
-                defaultSpreadsheetId={data.defaultSpreadsheetId || ""}
-                onChanged={reload}
-              />
-            )}
-          </section>
-        ))}
+              <p className="text-sm text-slate-600">
+                {new Date(w.start_time).toLocaleString("en-GB", {
+                  timeZone: "Asia/Colombo",
+                })}{" "}
+                (Sri Lanka)
+                <br />
+                {w.venue}
+              </p>
+              <div className="grid grid-cols-4 gap-2">
+                {[
+                  ["Total seats", w.capacity || "Unlimited"],
+                  ["Booked", w.bookedCount],
+                  ["Available", w.remaining ?? "Unlimited"],
+                  ["Attended", w.totalAttended],
+                ].map(([label, count]) => (
+                  <div key={label} className="rounded-lg bg-slate-50 p-2">
+                    <p className="text-[11px] text-slate-500">{label}</p>
+                    <p className="text-lg font-bold">{count}</p>
+                  </div>
+                ))}
+              </div>
+              <p className="text-xs text-slate-500">
+                Attached forms: {w.attachedForms.length} · Automatic reminders{" "}
+                {w.reminders_enabled === false ? "Off" : "On"}
+              </p>
+              <Link
+                className={buttonClass}
+                href={"/admin/workshops/" + encodeURIComponent(w.id)}
+              >
+                Open workshop →
+              </Link>
+            </article>
+          ))}
       </div>
-      {data && !data.workshops.length && (
-        <p className="text-slate-500">No workshops planned yet.</p>
+      {data && !workshops.length && (
+        <p>No workshops planned yet. Create one to get started.</p>
       )}
     </div>
   );

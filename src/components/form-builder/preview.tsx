@@ -12,6 +12,8 @@ import FormQuestion from "@/components/form-question";
 import FormInstructions from "@/components/form-instructions";
 import FormSubmitMessages from "@/components/form-submit-messages";
 import { buttonClass } from "./controls";
+import WorkshopSelection from "@/components/workshop-selection";
+import { workshopOptions } from "@/lib/workshops/policy";
 import type { Workshop } from "@/lib/data/store";
 
 export default function FormPreview({
@@ -31,15 +33,10 @@ export default function FormPreview({
   const visible = visibleFormFields(values.fields, answers),
     messages = resolveFormMessages(values.messages),
     display = resolveFormMessageDisplay(values.message_display);
-  const sessions = workshops.filter(
-    (workshop) =>
-      workshop.is_active &&
-      workshop.campaign_id === campaignId &&
-      Date.parse(workshop.start_time) > Date.now() &&
-      (!workshop.booking_deadline ||
-        Date.parse(workshop.booking_deadline) > Date.now()) &&
-      (!values.workshop_config?.workshop_ids.length ||
-        values.workshop_config.workshop_ids.includes(workshop.id)),
+  const sessions = workshopOptions(
+    workshops,
+    campaignId,
+    values.workshop_config,
   );
   useEffect(() => {
     dialog.current?.showModal();
@@ -150,30 +147,14 @@ export default function FormPreview({
                   ))}
               </div>
               {values.workshop_config?.enabled && (
-                <label className="block text-sm font-semibold text-slate-700">
-                  Select your workshop
-                  <select className="mt-2 w-full rounded-xl border border-slate-300 p-3 text-sm font-normal">
-                    <option>Choose a workshop</option>
-                    {sessions.map((workshop) => (
-                      <option
-                        key={workshop.id}
-                        disabled={Boolean(
-                          workshop.capacity &&
-                          (workshop.bookedCount || 0) >= workshop.capacity,
-                        )}
-                      >
-                        {workshop.title} ·{" "}
-                        {new Date(workshop.start_time).toLocaleString()} ·{" "}
-                        {workshop.venue}
-                      </option>
-                    ))}
-                  </select>
-                  {!sessions.length && (
-                    <span className="mt-2 block text-xs font-normal text-amber-800">
-                      No bookable workshops are available.
-                    </span>
-                  )}
-                </label>
+                <WorkshopSelection
+                  config={values.workshop_config}
+                  workshops={sessions}
+                  value={String(answers.workshopId || "")}
+                  onChange={(value) =>
+                    setAnswers((current) => ({ ...current, workshopId: value }))
+                  }
+                />
               )}
               <button
                 type="button"

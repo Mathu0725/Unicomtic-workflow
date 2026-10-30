@@ -424,7 +424,7 @@ function ApplyForm() {
               </div>
             </div>
 
-            <WorkshopChoice value={workshopId} onChange={setWorkshopId} />
+            <WorkshopChoice flow="application" value={workshopId} onChange={setWorkshopId} />
             {/* Submit Button */}
             <div className="pt-4">
               <button

@@ -169,6 +169,7 @@ export const POST = route(async (req) => {
         enabled: false,
         required: false,
         workshop_ids: [],
+        selection_mode: "explicit",
       },
       email_automation: {
         enabled: true,
