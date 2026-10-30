@@ -229,7 +229,7 @@ Form's custom template-க்கு தேவையான variables நிரப
 
 **Mode மாற்றும் இடம்:** Form Builder → **Settings → General → Who can apply? → Application access**. Publish / Update form செய்த பிறகு mode மாறும்.
 
-புதிய admissions-க்கு மேலே குறிப்பிடப்பட்ட `/form/...` public URL-களை share செய்யுங்கள். பழைய `/register`, `/apply` screens legacy flow-ஐப் பயன்படுத்துகின்றன. குறிப்பாக `/apply`-ல் secure candidate access requirement தொடர்கிறது; தற்போதைய Open application-க்கான சரியான URL `/form/tic-2027-formal-application`.
+புதிய admissions-க்கு மேலே குறிப்பிடப்பட்ட `/form/...` public URL-களை share செய்யுங்கள். பழைய `/register` screen legacy flow-ஐப் பயன்படுத்துகிறது. பழைய `/apply` link-க்கு அதே intake-ல் ஒரு Open application இருந்தால் அந்த public form-க்கு நேராக redirect ஆகும்; இல்லாவிட்டால் பழைய restricted application flow தொடரும். தற்போதைய Open application-க்கான நேரடி URL `/form/tic-2027-formal-application`.
 
 **Registered applicants only** தேர்வு செய்தால் invitation மற்றும் secure candidate session requirement மீண்டும் பொருந்தும். புதிய application forms Open mode-ல் உருவாகும்; பழைய form-ல் explicit mode இல்லாவிட்டால் restricted behavior தொடரும்.
 
