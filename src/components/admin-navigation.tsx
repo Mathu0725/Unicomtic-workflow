@@ -20,6 +20,7 @@ const navigationItems: NavigationItem[] = [
     children: [
       { name: "Registrations", href: "/admin/registrations", icon: Users },
       { name: "Applications", href: "/admin/applications", icon: FileText },
+      { name: "Workshop bookings", href: "/admin/workshop-bookings", icon: Calendar },
       { name: "District Analytics", href: "/admin/analytics", icon: BarChart3 },
     ],
   },
