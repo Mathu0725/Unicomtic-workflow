@@ -58,13 +58,16 @@ export default function CandidateAccessGate({
     setError("");
     setMessage("");
     try {
-      const data = await api("/api/candidate-access/request", {
+      const data = await api(workshop ? "/api/candidate-access/verify-workshop" : "/api/candidate-access/request", {
         reference: ref,
         email,
-        purpose,
+        ...(!workshop ? { purpose } : {}),
         ...(formSlug ? { formSlug } : {}),
       });
-      if (data.redirectTo) window.location.assign(data.redirectTo);
+      if (workshop && data.verified) {
+        setVerified(true);
+        onVerified?.(data.reference);
+      } else if (data.redirectTo) window.location.assign(data.redirectTo);
       else setMessage(data.message);
     } catch (e: any) {
       setError(e.message);
@@ -82,7 +85,7 @@ export default function CandidateAccessGate({
       </h2>
       <p className="text-sm leading-relaxed text-slate-600">
         {workshop
-          ? "Enter the application or registration reference and the email address used for that record. Open the link sent to your inbox to continue to the workshop form."
+          ? "Enter your application or registration reference and the email address used for that record. Once they match, the workshop form opens here."
           : "Enter your registration reference and the email address used to register. Open the private link in that inbox to continue. Contact admissions if your email needs correcting."}
       </p>
       <Notice error>{error}</Notice>
@@ -113,11 +116,11 @@ export default function CandidateAccessGate({
           />
         </label>
         <button className={buttonClass} disabled={busy}>
-          {busy ? "Requesting…" : "Email my secure link"}
+          {busy ? (workshop ? "Verifying…" : "Requesting…") : (workshop ? "Continue to workshop form" : "Email my secure link")}
         </button>
       </form>
       <p className="text-xs text-slate-500">
-        Links expire 30 minutes after dispatch. Verified access lasts one hour.
+        {workshop ? "Workshop access lasts 30 minutes. Refresh this page to verify again if it expires." : "Links expire 30 minutes after dispatch. Verified access lasts one hour."}
       </p>
     </section>
   );

@@ -1,6 +1,6 @@
 import { createHmac } from "node:crypto";
 import type { NextRequest } from "next/server";
-import type { DatabaseStore, Registration, Student } from "../data/store";
+import type { CustomForm, DatabaseStore, Registration, Student } from "../data/store";
 import { appSecret, decrypt, encrypt } from "./secrets";
 import { AppError } from "../errors/app-error";
 import { ProviderError } from "../errors/provider-error";
@@ -12,8 +12,10 @@ import { findPublicForm } from "../forms/public-links";
 import { formRequiresCandidateAccess } from "../forms/access";
 
 export const CANDIDATE_COOKIE = "unicom_candidate_access";
+export const WORKSHOP_COOKIE = "unicom_workshop_access";
 export const LINK_LIFETIME = 30 * 60000;
 export const SESSION_LIFETIME = 60 * 60000;
+export const WORKSHOP_SESSION_LIFETIME = 30 * 60000;
 export type CandidatePurpose = "status" | "apply";
 type Claims = {
   type: "candidate-link-v1" | "candidate-session-v1";
@@ -23,6 +25,11 @@ type Claims = {
   expires: number;
   purpose: CandidatePurpose;
   destination?: string;
+};
+type WorkshopClaims = Omit<Claims, "type" | "purpose"> & {
+  type: "workshop-session-v1";
+  purpose: "workshop";
+  formId: string;
 };
 const denied = () =>
   new AppError(
@@ -60,7 +67,7 @@ function decode(value: string | undefined, type: Claims["type"]): Claims {
     throw denied();
   }
 }
-function resolve(db: DatabaseStore, claims: Claims) {
+function resolve<T extends Claims | WorkshopClaims>(db: DatabaseStore, claims: T) {
   const registration = db.registrations.find(
     (registration) =>
       registration.id === claims.registrationId &&
@@ -86,6 +93,51 @@ export function readCandidateClaims(req: NextRequest) {
 }
 export function requireCandidateAccess(db: DatabaseStore, req: NextRequest) {
   return resolve(db, readCandidateClaims(req));
+}
+export function workshopSession(
+  registration: Registration,
+  student: Student,
+  formId: string,
+) {
+  const claims: WorkshopClaims = {
+    type: "workshop-session-v1",
+    purpose: "workshop",
+    registrationId: registration.id,
+    studentId: student.id,
+    emailHash: emailHash(student.email),
+    formId,
+    expires: Date.now() + WORKSHOP_SESSION_LIFETIME,
+  };
+  return encrypt(JSON.stringify(claims));
+}
+export function requireWorkshopAccess(
+  db: DatabaseStore,
+  req: NextRequest,
+  formId: string,
+) {
+  try {
+    const value = req.cookies.get(WORKSHOP_COOKIE)?.value;
+    if (!value || value.length > 3000) throw denied();
+    const claims = JSON.parse(decrypt(value)) as WorkshopClaims;
+    if (
+      claims.type !== "workshop-session-v1" ||
+      claims.purpose !== "workshop" ||
+      claims.formId !== formId ||
+      !Number.isFinite(claims.expires) ||
+      claims.expires <= Date.now() ||
+      claims.expires > Date.now() + WORKSHOP_SESSION_LIFETIME + 1000 ||
+      typeof claims.registrationId !== "string" ||
+      typeof claims.studentId !== "string" ||
+      typeof claims.emailHash !== "string"
+    ) throw denied();
+    return resolve(db, claims);
+  } catch {
+    throw denied();
+  }
+}
+export function requireFormAccess(db: DatabaseStore, req: NextRequest, form: CustomForm) {
+  if (form.type === "workshop_rsvp") return requireWorkshopAccess(db, req, form.id);
+  return requireCandidateAccess(db, req);
 }
 export function candidateSession(db: DatabaseStore, token: string) {
   const access = resolve(db, decode(token, "candidate-link-v1"));

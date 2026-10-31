@@ -11,7 +11,7 @@ import {
 import { DOCUMENT_MAX_BYTES } from "@/lib/documents/constants";
 import { MULTIPART_MAX_BYTES } from "@/lib/upload-limits";
 import { uploadReceipt, type DocumentUpload } from "@/lib/documents/receipts";
-import { requireCandidateAccess } from "@/lib/security/candidate-access";
+import { requireFormAccess } from "@/lib/security/candidate-access";
 import { findPublicForm } from "@/lib/forms/public-links";
 import { candidateSessionAllowsForm, formRequiresCandidateAccess } from "@/lib/forms/access";
 import { formAvailabilityProblem } from "@/lib/forms/field-rules";
@@ -34,10 +34,10 @@ function assertForm(
   if (formAvailabilityProblem(form))
     throw new RequestError("This form is unavailable or closed.", 404);
   const access = formRequiresCandidateAccess(form)
-    ? requireCandidateAccess(getDb(), req)
+    ? requireFormAccess(getDb(), req, form)
     : undefined;
-  if (access && (access.registration.campaign_id !== form.campaign_id || !candidateSessionAllowsForm(form, access.claims)))
-    throw new RequestError("Open the secure link sent for this form to continue.", 403);
+  if (access && (access.registration.campaign_id !== form.campaign_id || (form.type !== "workshop_rsvp" && !candidateSessionAllowsForm(form, access.claims))))
+    throw new RequestError("Verify your registered details to continue with this form.", 403);
   if (form.updated_at !== version)
     throw new RequestError(
       "The form changed. Refresh its questions before uploading.",

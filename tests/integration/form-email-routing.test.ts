@@ -15,6 +15,7 @@ import {
 import { POST as requestAccess } from "../../src/app/api/candidate-access/request/route";
 import { POST as exchangeAccess } from "../../src/app/api/candidate-access/exchange/route";
 import { GET as accessSession } from "../../src/app/api/candidate-access/session/route";
+import { POST as verifyWorkshop } from "../../src/app/api/candidate-access/verify-workshop/route";
 import { PATCH as updateForm } from "../../src/app/api/admin/forms/[id]/route";
 import {
   canonicalStudent,
@@ -185,7 +186,7 @@ it("lets a previously registered candidate submit an open application without an
   expect((await application()).status).toBe(200);
   expect((await readDatabase()).registrations).toHaveLength(1);
 });
-it("opens a workshop form only after an emailed application reference is verified", async () => {
+it("opens a workshop form immediately after matching reference and email without granting tracking access", async () => {
   await transaction((db) => {
     const form = db.customForms[1];
     form.type = "workshop_rsvp";
@@ -214,22 +215,22 @@ it("opens a workshop form only after an emailed application reference is verifie
   const statusToken = new URLSearchParams(new URL(candidateLink(beforeLink.registrations[0], beforeLink.students[0], "status")).hash.slice(1)).get("token")!;
   const statusCookie = `${CANDIDATE_COOKIE}=${candidateSession(beforeLink, statusToken).cookie}`;
   expect((await accessSession(req(`/api/candidate-access/session?formSlug=${form.slug}`, undefined, statusCookie), undefined).then(response => response.json())).verified).toBe(false);
-  expect((await submit(req(`/api/forms/${form.slug}`, { data: person(1), workshopId: "ws-1" }, statusCookie), { params: { slug: form.slug } })).status).toBe(403);
-  const requested = await requestAccess(req("/api/candidate-access/request", {
-    reference: applicationReference, email: person(1).email, purpose: "apply", formSlug: form.slug,
+  expect((await submit(req(`/api/forms/${form.slug}`, { data: person(1), workshopId: "ws-1" }, statusCookie), { params: { slug: form.slug } })).status).toBe(401);
+  const wrong = await verifyWorkshop(req("/api/candidate-access/verify-workshop", {
+    reference: applicationReference, email: "wrong@example.com", formSlug: form.slug,
   }), undefined);
-  expect(requested.status).toBe(200);
-  const dbWithLink = await readDatabase();
-  const job = dbWithLink.outbox.find((item) => item.payload.candidateAccess);
-  expect(job?.payload.candidateAccess.destination).toBe(`/form/${form.slug}`);
-  const rendered = secureCandidateEmail(dbWithLink, job!.payload);
-  const link = new URL(rendered.html.match(/href="([^"]+)"/)![1]);
-  const token = new URLSearchParams(link.hash.slice(1)).get("token")!;
-  const exchanged = await exchangeAccess(req("/api/candidate-access/exchange", { token }), undefined);
-  expect(exchanged.status).toBe(200);
-  expect((await exchanged.json()).redirectTo).toBe(`/form/${form.slug}`);
-  const cookie = exchanged.headers.get("set-cookie")!.split(";")[0];
+  expect(wrong.status).toBe(401);
+  const verified = await verifyWorkshop(req("/api/candidate-access/verify-workshop", {
+    reference: applicationReference, email: person(1).email, formSlug: form.slug,
+  }), undefined);
+  expect(verified.status).toBe(200);
+  const cookie = verified.headers.get("set-cookie")!.split(";")[0];
   expect((await accessSession(req(`/api/candidate-access/session?formSlug=${form.slug}`, undefined, cookie), undefined).then(response => response.json())).verified).toBe(true);
+  expect((await accessSession(req("/api/candidate-access/session", undefined, cookie), undefined).then(response => response.json())).verified).toBe(false);
+  const registrationVerified = await verifyWorkshop(req("/api/candidate-access/verify-workshop", {
+    reference: beforeLink.registrations[0].reference_no, email: person(1).email, formSlug: form.slug,
+  }), undefined);
+  expect(registrationVerified.status).toBe(200);
   const response = await submit(
     req(`/api/forms/${form.slug}`, { data: person(1), workshopId: "ws-1", expectedFormVersion: form.updated_at }, cookie),
     { params: { slug: form.slug } },

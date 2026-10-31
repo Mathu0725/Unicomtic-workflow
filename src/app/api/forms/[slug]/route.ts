@@ -3,7 +3,7 @@ import { route, RequestError } from "@/lib/http";
 import { getDb } from "@/lib/data/store";
 import { availableWorkshops, submitCustomForm } from "@/lib/admissions/service";
 import { hasDriveAccess } from "@/lib/google/oauth";
-import { requireCandidateAccess } from "@/lib/security/candidate-access";
+import { requireFormAccess } from "@/lib/security/candidate-access";
 import { documentAnswer } from "@/lib/documents/receipts";
 import { findPublicForm } from "@/lib/forms/public-links";
 import {
@@ -106,7 +106,7 @@ export const POST = route(
     if (!body.data || typeof body.data !== "object" || Array.isArray(body.data))
       throw new RequestError("Invalid submission.");
     const access = formRequiresCandidateAccess(form)
-      ? requireCandidateAccess(getDb(), req)
+      ? requireFormAccess(getDb(), req, form)
       : undefined;
     if (access) {
       for (const field of form.fields.filter(
@@ -148,13 +148,13 @@ export const POST = route(
     authorize: (req, { params }, db) => {
       const form = findPublicForm(db, params.slug);
       if (form && formRequiresCandidateAccess(form)) {
-        const access = requireCandidateAccess(db, req);
+        const access = requireFormAccess(db, req, form);
         const campaign =
           form.campaign_id ||
           db.campaigns.find((campaign) => campaign.is_active)?.id;
-        if (campaign !== access.registration.campaign_id || !candidateSessionAllowsForm(form, access.claims))
+        if (campaign !== access.registration.campaign_id || (form.type !== "workshop_rsvp" && !candidateSessionAllowsForm(form, access.claims)))
           throw new RequestError(
-            "Open the secure link sent for this form to continue.",
+            "Verify your registered details to continue with this form.",
             403,
           );
         return access.registration.id;
