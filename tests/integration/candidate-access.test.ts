@@ -44,7 +44,7 @@ it("rejects a bare reference even when it is a real record", async () => {
 it("exchanges a valid email link for an HttpOnly session and restricts it to its registration", async () => {
   const response = await exchange(request("/api/candidate-access/exchange", { token }), undefined);
   expect(response.status).toBe(200); expect(response.headers.get("set-cookie")).toContain("HttpOnly"); expect(response.headers.get("set-cookie")).toMatch(/SameSite=lax/i);
-  expect((await response.json()).redirectTo).toBe(`/apply?ref=${encodeURIComponent(reference)}`);
+  expect((await response.json()).redirectTo).toBe(`/form/${(await readDatabase()).customForms[1].slug}`);
   const own = await status(request(`/api/status?ref=${reference}`, undefined, cookie), undefined); expect(own.status).toBe(200); expect((await own.json()).data.studentName).toBe("Candidate 1");
   expect((await status(request(`/api/status?ref=${secondReference}`, undefined, cookie), undefined)).status).toBe(403);
   expect((await status(request("/api/status?nic=200012345601", undefined, cookie), undefined)).status).toBe(403);
@@ -133,6 +133,25 @@ it("does not replay another verified candidate's application receipt", async () 
   expect((await customForm(request(`/api/forms/${form.slug}`, body, cookie, headers), context)).status).toBe(200);
   const replay = await customForm(request(`/api/forms/${form.slug}`, body, otherCookie, headers), context);
   expect(replay.status).toBe(403); expect(replay.headers.get("Idempotency-Replayed")).toBeNull();
+  expect((await readDatabase()).applications).toHaveLength(1);
+});
+it("lets a registered candidate fill a secure-link application after email verification", async () => {
+  await transaction(db => {
+    db.registrations[0].status = "registered";
+    db.customForms[1].application_mode = "invitation";
+  });
+  const db = await readDatabase(), form = db.customForms[1];
+  const secureLink = tokenFromLink(candidateLink(db.registrations[0], db.students[0], "apply", `/form/${form.slug}`));
+  const exchanged = await exchange(request("/api/candidate-access/exchange", { token: secureLink }), undefined);
+  expect(exchanged.status).toBe(200);
+  expect((await exchanged.json()).redirectTo).toBe(`/form/${form.slug}`);
+  const verifiedCookie = exchanged.headers.get("set-cookie")!.split(";")[0];
+  expect((await session(request("/api/candidate-access/session", undefined, verifiedCookie), undefined).then(response => response.json())).verified).toBe(true);
+  const submitted = await customForm(
+    request(`/api/forms/${form.slug}`, { data: person(1), expectedFormVersion: form.updated_at }, verifiedCookie),
+    { params: { slug: form.slug } },
+  );
+  expect(submitted.status).toBe(200);
   expect((await readDatabase()).applications).toHaveLength(1);
 });
 it("scopes legacy application retry receipts to the verified registration", async () => {

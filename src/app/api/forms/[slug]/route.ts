@@ -157,14 +157,6 @@ export const POST = route(
             "This form belongs to a different intake.",
             403,
           );
-        if (
-          form.type === "application" &&
-          !["invited", "applied"].includes(access.registration.status)
-        )
-          throw new RequestError(
-            "An application invitation is required. Contact admissions.",
-            403,
-          );
         return access.registration.id;
       }
     },

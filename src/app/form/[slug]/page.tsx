@@ -370,7 +370,7 @@ export default function PublicCustomFormPage() {
 
   if (loading || loadedSlug !== slug) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+      <div className="public-page min-h-screen flex items-center justify-center p-4">
         <div className="text-center">
           <Loader2 className="w-8 h-8 animate-spin text-neutral-600 mx-auto mb-3" />
           <p className="text-sm font-semibold text-slate-600">
@@ -383,8 +383,8 @@ export default function PublicCustomFormPage() {
 
   if (!form) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
-        <div className="max-w-md w-full bg-white rounded-2xl border border-slate-200 p-8 text-center shadow-sm">
+      <div className="public-page min-h-screen flex items-center justify-center p-4">
+        <div className="public-card max-w-md w-full rounded-2xl p-8 text-center">
           <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-3" />
           <h1 className="text-xl font-bold text-slate-900 mb-2">
             Form Unavailable
@@ -395,7 +395,7 @@ export default function PublicCustomFormPage() {
           <button
             type="button"
             onClick={() => setLoadAttempt((attempt) => attempt + 1)}
-            className="px-5 py-2.5 rounded-xl bg-[#4d4d4d] hover:bg-[#333333] text-white font-bold text-xs shadow"
+            className="px-5 py-2.5 rounded-xl bg-blue-700 hover:bg-blue-800 text-white font-bold text-xs shadow"
           >
             Try again
           </button>
@@ -416,8 +416,8 @@ export default function PublicCustomFormPage() {
   const messageDisplay = resolveFormMessageDisplay(form.message_display);
 
   const content = (
-    <div className="min-h-screen bg-slate-50 py-10 px-4 sm:px-6 lg:px-8 accent-[#4d4d4d]">
-      <div className="max-w-2xl mx-auto">
+    <div className="public-page min-h-screen px-4 py-6 accent-blue-700 sm:px-6 sm:py-10 lg:px-8">
+      <div className="mx-auto max-w-3xl">
         {lastSaved && (
           <div className="mb-4 flex justify-end">
             <span className="text-[11px] text-emerald-700 bg-emerald-50 border border-emerald-200/80 px-2.5 py-1 rounded-full flex items-center gap-1">
@@ -460,7 +460,7 @@ export default function PublicCustomFormPage() {
         )}
 
         {/* Card Header */}
-        <div className="overflow-hidden rounded-t-2xl border-t border-x border-slate-200 bg-[#4d4d4d] text-white">
+        <div className="overflow-hidden rounded-t-2xl border-t border-x border-slate-200 bg-[#142b49] text-white">
           <div className="p-6 sm:p-8">
             <div className="flex flex-wrap items-center gap-2 mb-2">
               <span className="text-xs font-semibold tracking-wider uppercase text-neutral-200 bg-neutral-800/80 px-2.5 py-0.5 rounded-full border border-neutral-700">
@@ -487,7 +487,7 @@ export default function PublicCustomFormPage() {
         </div>
 
         {/* Form Fields */}
-        <div className="bg-white rounded-b-2xl border border-slate-200 p-6 sm:p-8 shadow-sm">
+        <div className="rounded-b-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-8">
           {serverError && (
             <div className="mb-6 p-4 rounded-xl bg-red-50 border border-red-200 text-red-800 text-xs font-semibold flex items-center gap-2">
               <AlertCircle className="w-4 h-4 text-red-600 flex-shrink-0" />
@@ -593,7 +593,7 @@ export default function PublicCustomFormPage() {
                   refreshing ||
                   Object.values(uploading).some(Boolean)
                 }
-                className="w-full py-4 px-6 rounded-xl bg-[#4d4d4d] hover:bg-[#333333] text-white font-extrabold text-sm shadow-md transition flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
+                className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-blue-700 px-6 py-4 text-sm font-bold text-white shadow-sm transition hover:bg-blue-800 disabled:opacity-60"
               >
                 {submitting ? (
                   <>
@@ -620,6 +620,10 @@ export default function PublicCustomFormPage() {
   );
   return formRequiresCandidateAccess(form) ? (
     <CandidateAccessGate purpose="apply" formSlug={slug}>
+      {content}
+    </CandidateAccessGate>
+  ) : form.type === "workshop_rsvp" ? (
+    <CandidateAccessGate purpose="apply" formSlug={slug} optional>
       {content}
     </CandidateAccessGate>
   ) : (

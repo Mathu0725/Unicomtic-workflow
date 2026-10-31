@@ -32,6 +32,7 @@ export default function AdminFormsPage() {
   const [forms, setForms] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [duplicatingId, setDuplicatingId] = useState<string | null>(null);
+  const [accessUpdatingId, setAccessUpdatingId] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newTitle, setNewTitle] = useState("");
@@ -121,6 +122,32 @@ export default function AdminFormsPage() {
       }
     } catch (e) {
       setPageError(e instanceof Error ? e.message : "Could not load or save this data. Please try again.");
+    }
+  };
+
+  const handleToggleSecureLink = async (form: any) => {
+    if (accessUpdatingId) return;
+    setAccessUpdatingId(form.id);
+    setBanner(null);
+    try {
+      const nextMode = form.application_mode === "open" ? "invitation" : "open";
+      const res = await apiResponse(`/api/admin/forms/${form.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ application_mode: nextMode, expectedUpdatedAt: form.updated_at }),
+      });
+      const data = await res.json();
+      setForms((previous) => previous.map((item) => item.id === form.id ? data.form : item));
+      setBanner({
+        type: "success",
+        message: nextMode === "open"
+          ? `Secure link turned off for “${form.title}”. Applicants can now open the form directly.`
+          : `Secure link turned on for “${form.title}”. Registered applicants must verify their email before filling it.`,
+      });
+    } catch (error) {
+      setBanner({ type: "error", message: error instanceof Error ? error.message : "Could not update secure-link access." });
+    } finally {
+      setAccessUpdatingId(null);
     }
   };
 
@@ -308,20 +335,20 @@ export default function AdminFormsPage() {
     <div className="space-y-6">
       <RequestNotice error>{pageError}</RequestNotice>
       {/* Title & Actions */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <span className="text-xs font-bold text-blue-600 uppercase tracking-wider">Dynamic Studio</span>
-          <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">
-            Registration & Application Form Builder
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="max-w-2xl">
+          <span className="text-xs font-bold text-blue-600 uppercase tracking-wider">Forms studio</span>
+          <h1 className="text-2xl font-bold text-slate-900 tracking-tight sm:text-3xl">
+            Forms
           </h1>
-          <p className="text-xs sm:text-sm text-slate-500 mt-1">
-            Build custom forms, 1-click duplicate forms for new batches like Forms App, connect to Google Sheets, and trigger automated emails.
+          <p className="mt-1 text-sm leading-6 text-slate-600">
+            Create registration and application forms, manage responses, and configure each form’s integrations.
           </p>
         </div>
 
         <button
           onClick={() => setShowCreateModal(true)}
-          className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-md transition flex items-center gap-2 self-start sm:self-auto cursor-pointer"
+          className="inline-flex shrink-0 items-center gap-2 self-start whitespace-nowrap rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 sm:self-auto cursor-pointer"
         >
           <Plus className="w-4 h-4" />
           Create New Form
@@ -346,7 +373,7 @@ export default function AdminFormsPage() {
       )}
 
       {/* Forms Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
         {loading ? (
           <div className="col-span-2 p-12 text-center text-slate-400">
             <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2 text-blue-600" />
@@ -364,7 +391,7 @@ export default function AdminFormsPage() {
             return (
               <div
                 key={form.id}
-                className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm hover:shadow-md transition flex flex-col justify-between"
+                className="flex min-w-0 flex-col justify-between rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:border-blue-200 hover:shadow-md sm:p-6"
               >
                 <div>
                   {/* Card Header */}
@@ -406,6 +433,28 @@ export default function AdminFormsPage() {
                   <h2 className="text-lg font-bold text-slate-900 mb-1">{form.title}</h2>
                   <p className="text-xs text-slate-500 line-clamp-2 mb-4">{form.description}</p>
 
+                  {form.type === "application" && (
+                    <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-blue-100 bg-blue-50/60 p-3">
+                      <div>
+                        <span className="block text-[11px] font-bold uppercase tracking-wide text-blue-800">Secure email link</span>
+                        <span className="text-xs text-slate-600">
+                          {form.application_mode === "open" ? "Off · anyone can fill this form" : "On · registered applicants verify their email"}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-label={`Require a secure email link for ${form.title}`}
+                        aria-checked={form.application_mode !== "open"}
+                        disabled={accessUpdatingId === form.id}
+                        onClick={() => handleToggleSecureLink(form)}
+                        className="inline-flex min-w-14 items-center justify-center rounded-lg border border-blue-200 bg-white px-3 py-1.5 text-xs font-semibold text-blue-800 transition hover:bg-blue-100 disabled:opacity-60"
+                      >
+                        {accessUpdatingId === form.id ? <Loader2 className="h-4 w-4 animate-spin" /> : form.application_mode === "open" ? "Off" : "On"}
+                      </button>
+                    </div>
+                  )}
+
                   {/* Public Link Pill */}
                   <div className="flex items-center gap-2 bg-slate-50 p-2.5 rounded-xl border border-slate-200 text-xs mb-4">
                     <span className="font-mono text-slate-600 truncate flex-1">
@@ -438,10 +487,10 @@ export default function AdminFormsPage() {
 
                   {/* Integration Badges */}
                   <div className="space-y-2 mb-4">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                    <div className="grid grid-cols-1 gap-2 text-xs">
                       {/* Form-specific Google Sheet Connection Badge & Action */}
-                      <div className="p-2.5 rounded-lg border border-emerald-100 bg-emerald-50/50 flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-2 overflow-hidden">
+                      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-100 bg-emerald-50/50 p-3">
+                        <div className="flex min-w-0 items-center gap-2">
                           <FileSpreadsheet
                             className={`w-4 h-4 flex-shrink-0 ${
                               form.google_sheets_config?.enabled && form.google_sheets_config?.sheet_id
@@ -449,7 +498,7 @@ export default function AdminFormsPage() {
                                 : "text-slate-400"
                             }`}
                           />
-                          <div className="truncate">
+                          <div className="min-w-0">
                             <span className="block text-[10px] text-emerald-700 font-bold uppercase tracking-wider">
                               Google Sheet
                             </span>
@@ -461,7 +510,7 @@ export default function AdminFormsPage() {
                           </div>
                         </div>
 
-                        <div className="flex items-center gap-1 flex-shrink-0">
+                        <div className="flex shrink-0 items-center gap-1">
                           {form.google_sheets_config?.enabled && form.google_sheets_config?.sheet_id && (
                             <a
                               href={`https://docs.google.com/spreadsheets/d/${form.google_sheets_config.sheet_id}/edit`}
@@ -486,7 +535,7 @@ export default function AdminFormsPage() {
                       </div>
 
                       {/* Email Automation Badge */}
-                      <div className="p-2.5 rounded-lg border border-slate-100 bg-slate-50 flex items-center gap-2">
+                      <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
                         <Mail
                           className={`w-4 h-4 ${
                             form.email_automation?.enabled ? "text-blue-600" : "text-slate-400"
@@ -502,12 +551,12 @@ export default function AdminFormsPage() {
                     </div>
 
                     {/* Google Form Integration Badge */}
-                    <div className="p-2.5 rounded-lg border border-purple-100 bg-purple-50/70 flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-2 overflow-hidden">
+                    <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-purple-100 bg-purple-50/70 p-3">
+                      <div className="flex min-w-0 items-center gap-2">
                         <div className="h-5 w-5 rounded bg-purple-600 text-white flex items-center justify-center font-bold text-[10px] flex-shrink-0">
                           G
                         </div>
-                        <div className="truncate">
+                        <div className="min-w-0">
                           <span className="block text-[10px] text-purple-700 font-bold uppercase tracking-wider">
                             Google Form
                           </span>
@@ -538,7 +587,7 @@ export default function AdminFormsPage() {
                 </div>
 
                 {/* Card Footer Actions */}
-                <div className="pt-4 border-t border-slate-100 flex items-center justify-between text-xs">
+                <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4 text-xs">
                   <div className="flex items-center gap-3">
                     <Link
                       href={`/admin/forms/${form.id}/responses`}
@@ -549,7 +598,7 @@ export default function AdminFormsPage() {
                     </Link>
                   </div>
 
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     {/* 1-Click Form Duplication Button */}
                     <button
                       onClick={() => handleDuplicate(form)}

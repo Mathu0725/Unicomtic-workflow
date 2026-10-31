@@ -9,12 +9,14 @@ export default function CandidateAccessGate({
   purpose = "status",
   formSlug,
   onVerified,
+  optional = false,
 }: {
   children: React.ReactNode;
   reference?: string;
   purpose?: "status" | "apply";
   formSlug?: string;
   onVerified?: (reference: string) => void;
+  optional?: boolean;
 }) {
   const [checking, setChecking] = useState(true),
     [verified, setVerified] = useState(false),
@@ -22,7 +24,8 @@ export default function CandidateAccessGate({
     [email, setEmail] = useState(""),
     [busy, setBusy] = useState(false),
     [message, setMessage] = useState(""),
-    [error, setError] = useState("");
+    [error, setError] = useState(""),
+    [skipped, setSkipped] = useState(false);
   useEffect(() => {
     const controller = new AbortController();
     setChecking(true);
@@ -70,22 +73,15 @@ export default function CandidateAccessGate({
       setBusy(false);
     }
   };
-  if (checking)
-    return (
-      <p role="status" className="p-6 text-center text-sm text-slate-500">
-        Checking secure access…
-      </p>
-    );
-  if (verified) return <>{children}</>;
-  return (
+  const panel = (
     <section className="mx-auto my-8 max-w-lg rounded-2xl border border-slate-200 bg-white p-6 shadow-sm space-y-4">
       <h2 className="text-xl font-bold text-slate-900">
-        Continue with a secure email link
+        {optional ? "Secure email link (optional)" : "Continue with a secure email link"}
       </h2>
       <p className="text-sm leading-relaxed text-slate-600">
-        Enter your registration reference and the email address used to
-        register. Open the private link in that inbox to continue. Contact
-        admissions if your email needs correcting.
+        {optional
+          ? "Already registered? You can verify your email to continue with your record. You can also fill this workshop form directly below."
+          : "Enter your registration reference and the email address used to register. Open the private link in that inbox to continue. Contact admissions if your email needs correcting."}
       </p>
       <Notice error>{error}</Notice>
       <Notice>{message}</Notice>
@@ -118,9 +114,22 @@ export default function CandidateAccessGate({
           {busy ? "Requesting…" : "Email my secure link"}
         </button>
       </form>
+      {optional && (
+        <button type="button" onClick={() => setSkipped(true)} className="w-full rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-800 hover:bg-blue-100">
+          Hide this option and continue
+        </button>
+      )}
       <p className="text-xs text-slate-500">
         Links expire 30 minutes after dispatch. Verified access lasts one hour.
       </p>
     </section>
   );
+  if (optional) return <>{!checking && !verified && !skipped && panel}{children}</>;
+  if (checking)
+    return (
+      <p role="status" className="p-6 text-center text-sm text-slate-500">
+        Checking secure access…
+      </p>
+    );
+  return verified ? <>{children}</> : panel;
 }

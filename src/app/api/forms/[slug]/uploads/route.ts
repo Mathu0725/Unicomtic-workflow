@@ -38,15 +38,6 @@ function assertForm(
     : undefined;
   if (access && access.registration.campaign_id !== form.campaign_id)
     throw new RequestError("This form belongs to a different intake.", 403);
-  if (
-    access &&
-    form.type === "application" &&
-    !["invited", "applied"].includes(access.registration.status)
-  )
-    throw new RequestError(
-      "An application invitation is required. Contact admissions.",
-      403,
-    );
   if (form.updated_at !== version)
     throw new RequestError(
       "The form changed. Refresh its questions before uploading.",

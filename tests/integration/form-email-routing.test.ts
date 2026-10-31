@@ -13,6 +13,7 @@ import {
   POST as saveRouting,
 } from "../../src/app/api/admin/email/routing/route";
 import { POST as requestAccess } from "../../src/app/api/candidate-access/request/route";
+import { PATCH as updateForm } from "../../src/app/api/admin/forms/[id]/route";
 import {
   canonicalStudent,
   registrationFor,
@@ -153,6 +154,24 @@ it("keeps invitation forms private and rolls back rejected submissions", async (
   expect(db.applications).toHaveLength(0);
   expect(db.outbox).toHaveLength(0);
 });
+it("switches secure-link access off and on without changing the public form link", async () => {
+  const original = await current();
+  const change = (mode: "open" | "invitation", version: string) =>
+    updateForm(new NextRequest(`http://localhost:3000/api/admin/forms/${original.id}`, {
+      method: "PATCH",
+      headers: { Cookie: staff, "Content-Type": "application/json" },
+      body: JSON.stringify({ application_mode: mode, expectedUpdatedAt: version }),
+    }), { params: { id: original.id } });
+  const opened = await change("open", original.updated_at);
+  expect(opened.status).toBe(200);
+  const openForm = (await opened.json()).form;
+  expect(openForm.slug).toBe(original.slug);
+  expect((await publicForm(req(`/api/forms/${original.slug}`), { params: { slug: original.slug } }).then(response => response.json())).form.application_mode).toBe("open");
+  const protectedForm = await change("invitation", openForm.updated_at);
+  expect(protectedForm.status).toBe(200);
+  expect((await publicForm(req(`/api/forms/${original.slug}`), { params: { slug: original.slug } }).then(response => response.json())).form.application_mode).toBe("invitation");
+  expect((await application()).status).toBe(401);
+});
 it("lets a previously registered candidate submit an open application without an invitation", async () => {
   await transaction((db) => {
     const reg = registrationFor(canonicalStudent(person()));
@@ -160,6 +179,30 @@ it("lets a previously registered candidate submit an open application without an
   });
   expect((await application()).status).toBe(200);
   expect((await readDatabase()).registrations).toHaveLength(1);
+});
+it("books a workshop RSVP without requiring the optional email link", async () => {
+  await transaction((db) => {
+    const form = db.customForms[1];
+    form.type = "workshop_rsvp";
+    form.workshop_config = { enabled: true, required: true, workshop_ids: ["ws-1"], selection_mode: "explicit" };
+    db.workshops.push({
+      id: "ws-1", campaign_id: form.campaign_id!, title: "Test workshop", description: "",
+      venue: "Main campus", address: "", google_maps_url: "",
+      start_time: new Date(Date.now() + 7 * 86400000).toISOString(),
+      end_time: new Date(Date.now() + 7 * 86400000 + 3600000).toISOString(),
+      reminder_schedule: { days_before: [] }, is_active: true, created_at: new Date().toISOString(),
+    });
+  });
+  const form = await current();
+  const response = await submit(
+    req(`/api/forms/${form.slug}`, { data: person(1), workshopId: "ws-1", expectedFormVersion: form.updated_at }),
+    { params: { slug: form.slug } },
+  );
+  expect(response.status).toBe(200);
+  const db = await readDatabase();
+  expect(db.workshopBookings).toHaveLength(1);
+  expect(db.workshopBookings[0].workshop_id).toBe("ws-1");
+  expect(db.formSubmissions).toHaveLength(1);
 });
 it("deduplicates concurrent application retries and queues each recipient once", async () => {
   const responses = await Promise.all(
