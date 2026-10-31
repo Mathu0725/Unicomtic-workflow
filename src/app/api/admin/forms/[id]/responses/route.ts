@@ -4,7 +4,7 @@ import { route, RequestError } from "@/lib/http";
 import { queueSheet } from "@/lib/jobs/outbox";
 import { formSheetTarget } from "@/lib/google/sheet-target";
 import { spreadsheetId } from "@/lib/google/sheets-service";
-import { submissionSheetRow } from "@/lib/admissions/service";
+import { submissionSheetIdentity, submissionSheetRow } from "@/lib/google/submission-row";
 import { responseCsv } from "@/lib/forms/responses";
 import { z } from "zod";
 export const dynamic = "force-dynamic";
@@ -38,7 +38,7 @@ export const GET = route(
                 !(
                   job.payload.sourceId === sub.id ||
                   job.payload.rows?.some(
-                    (row: any) => row.referenceNo === sub.reference_no,
+                    (row: any) => row.referenceNo === submissionSheetIdentity(sub).referenceNo,
                   )
                 )
               )
@@ -72,7 +72,7 @@ export const GET = route(
             (!currentEmail ||
               latest.payload.rows?.some(
                 (row: any) =>
-                  row.referenceNo === sub.reference_no &&
+                  row.referenceNo === submissionSheetIdentity(sub).referenceNo &&
                   String(row.email || "").toLowerCase() ===
                     currentEmail.toLowerCase(),
               )),
@@ -180,7 +180,7 @@ export const POST = route(
           ? submissionSheetRow(student, reg, app, sub)
           : {
               ...sub.data,
-              referenceNo: sub.reference_no,
+              ...submissionSheetIdentity(sub),
               createdAt: sub.created_at,
             };
       const job = queueSheet(

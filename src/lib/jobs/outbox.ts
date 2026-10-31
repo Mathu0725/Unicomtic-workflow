@@ -15,6 +15,8 @@ import { defaultEmailAccountId, GMAIL_ACCOUNT } from "../email/accounts";
 import { sanitizeEmailHtml } from "../email/sanitize";
 import { workshopBookingSheetRow } from "../workshops/booking-sheet-row";
 import { workshopEmailProblem } from "../workshops/email-policy";
+import { submissionSheetIdentity } from "../google/submission-row";
+import { decisionJobIsCurrent } from "../admissions/decision-notifications";
 export function enqueue(db: DatabaseStore, type: OutboxJob["type"], key: string, payload: Record<string, any>) {
     const existing = db.outbox.find(j => j.key === key);
     if (existing)
@@ -55,6 +57,9 @@ export async function processOutbox(limit = 120, timeBudgetMs = 45000, onlyJobId
             break;
         const claim = await commit(db => {
             const now = Date.now();
+            for (const item of db.outbox.filter(j => j.type === "email" && j.status === "queued" && !decisionJobIsCurrent(db, j))) {
+                item.status = "failed"; item.error_code = "DECISION_SUPERSEDED"; item.error = "The decision changed before this notification was sent.";
+            }
             for (const item of db.outbox.filter(j => j.type === "email" && j.status === "queued")) {
                 const problem = workshopEmailProblem(db, item, now);
                 if (problem) { item.status = "blocked"; item.error_code = "WORKSHOP_MESSAGE_SUPERSEDED"; item.error = problem; item.repair_action = "review_workshop"; }
@@ -88,6 +93,12 @@ export async function processOutbox(limit = 120, timeBudgetMs = 45000, onlyJobId
                 const row=workshopBookingSheetRow(db,item.payload.bookingId);
                 if(row&&row.workshopId===item.payload.workshopId)item.payload.rows=[row];
                 else {item.status="blocked";item.error_code="WORKSHOP_BOOKING_MISSING";item.error="This booking or its linked student no longer exists. Review workshop bookings before exporting.";}
+            }
+            // Upgrade unsent legacy response jobs too; otherwise old queued keys
+            // can still overwrite another form's response after this release.
+            for (const item of db.outbox.filter(j => j.status === "queued" && j.type === "sheet" && !j.payload.workshopId && j.payload.sourceId)) {
+                const sub = db.formSubmissions.find(s => s.id === item.payload.sourceId);
+                if (sub && Array.isArray(item.payload.rows)) item.payload.rows = item.payload.rows.map((row: Record<string, unknown>) => ({ ...row, ...submissionSheetIdentity(sub) }));
             }
             const busySheets = db.outbox.some(j => j.type === "sheet" && j.status === "sending");
             const budgets = new Map<string, ReturnType<typeof emailBudget>>();
@@ -153,6 +164,7 @@ export async function processOutbox(limit = 120, timeBudgetMs = 45000, onlyJobId
         try {
             const db = await readDatabase();
             result = await databaseContext.run(db, async () => {
+            if (!decisionJobIsCurrent(db, job)) return { success: false, error: "This notification belongs to an older decision.", errorCode: "DECISION_SUPERSEDED", failureKind: "permanent" as const };
             const workshopProblem = workshopEmailProblem(db, job);
             if (workshopProblem) return { success: false, error: workshopProblem, errorCode: "WORKSHOP_MESSAGE_SUPERSEDED", failureKind: "permanent" as const };
             if (job.type === "email" && job.sender_identity !== emailSender(db, job.email_account_id)) return { success: false, error: "The sending account changed. This email will retry using the selected account's allowance.", errorCode: "EMAIL_SENDER_CHANGED", failureKind: "temporary" as const };
@@ -217,7 +229,7 @@ export async function processOutbox(limit = 120, timeBudgetMs = 45000, onlyJobId
                         if (booking.source_submission_ids?.includes(response.id) && state.customForms.some(f => f.id === response.form_id && f.type === "workshop_rsvp")) response.email_sent = true;
                     }
                 }
-                if (decision) {
+                if (decision && decisionJobIsCurrent(state, job)) {
                     decision.notification_status = "sent";
                     decision.notified_at = saved.completed_at;
                 }
@@ -236,7 +248,7 @@ export async function processOutbox(limit = 120, timeBudgetMs = 45000, onlyJobId
                     saved.next_attempt_at = new Date(Date.now() + 60000).toISOString();
                 }
                 const decision = state.selectionDecisions.find(d => d.id === job.payload.decisionId);
-                if (decision)
+                if (decision && decisionJobIsCurrent(state, job))
                     decision.notification_status = "failed";
             }
           }

@@ -199,6 +199,7 @@ export interface InterviewEvaluation {
 
 export interface SelectionDecision {
   id: string;
+  revision?: number;
   campaign_id: string;
   student_id: string;
   final_status: "selected" | "waiting_list" | "unsuccessful" | "withdrawn" | "pending_decision";

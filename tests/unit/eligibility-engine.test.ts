@@ -1,6 +1,16 @@
 import { describe, it, expect } from "vitest";
 import { evaluateCandidates, CandidateProfile } from "../../src/lib/eligibility/engine";
 
+it("places missing tie-break values after valid values and gives exact ties a stable order", () => {
+  const profile: CandidateProfile = { studentId: "missing", studentName: "A Student", registrationRef: "REG", studentExamId: "UT011000", district: "Jaffna", hasAttendedWorkshop: true, hasSubmittedApplication: true, examScore: 80, registrationDate: "invalid", alZScore: NaN };
+  for (const tieBreakRule of ["higher_al_results", "earlier_registration"] as const) {
+    const report = evaluateCandidates([profile, { ...profile, studentId: "valid", studentName: "Z Student", alZScore: 0, registrationDate: "2026-01-01" }], { minExamScore: 50, requireWorkshopAttendance: true, requireApplicationSubmission: true, maxShortlistCount: 1, tieBreakRule });
+    expect(report.eligibleCandidates[0].studentId).toBe("valid");
+  }
+  const report = evaluateCandidates([{ ...profile, studentId: "b" }, { ...profile, studentId: "a" }], { minExamScore: 50, requireWorkshopAttendance: true, requireApplicationSubmission: true, tieBreakRule: "higher_al_results" });
+  expect(report.eligibleCandidates.map(candidate => candidate.studentId)).toEqual(["a", "b"]);
+});
+
 describe("Eligibility Rules Engine (Stage 10)", () => {
   const sampleCandidates: CandidateProfile[] = [
     {

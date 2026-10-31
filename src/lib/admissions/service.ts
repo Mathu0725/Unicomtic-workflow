@@ -4,6 +4,7 @@ import { getProvinceForDistrict, SRI_LANKA_DISTRICTS } from "../constants/sri-la
 import { nicRegex, phoneRegex } from "../validations/registration";
 import { RequestError } from "../http";
 import { enqueue, queueSheet } from "../jobs/outbox";
+import { submissionSheetRow } from "../google/submission-row";
 import { renderEmailTemplate } from "../email/template-engine";
 import { formSheetTarget } from "../google/sheet-target";
 import { documentAnswer, documentUrl, type DocumentUpload } from "../documents/receipts";
@@ -106,9 +107,7 @@ export function bookWorkshop(workshopId: string | undefined, student: Student, r
     queueWorkshopConfirmation(db, booking);
     return booking;
 }
-export function submissionSheetRow(student: Student, reg: Registration, app?: Application, sub?: FormSubmission) {
-    return { ...(sub?.data || {}), referenceNo: sub?.reference_no || app?.application_no || reg.reference_no, registrationRef: reg.reference_no, fullName: student.full_name, email: student.email, phone: student.phone, nic: student.nic, district: student.district, status: app?.status || reg.status, createdAt: sub?.created_at || app?.created_at || reg.created_at };
-}
+export { submissionSheetRow } from "../google/submission-row";
 export function notifySubmission(student: Student, reg: Registration, app?: Application, sub?: FormSubmission, form?: CustomForm) {
     const db = getDb(), ref = sub?.reference_no || app?.application_no || reg.reference_no;
     const trackingUrl = `${(process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").replace(/\/$/, "")}/status?ref=${encodeURIComponent(reg.reference_no)}`;

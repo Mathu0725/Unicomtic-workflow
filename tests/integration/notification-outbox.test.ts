@@ -110,3 +110,21 @@ it("pauses an older Sheet destination before contacting the provider", async () 
     expect(job).toMatchObject({ status: "blocked", attempts: 0, error_code: "SHEET_DESTINATION_CHANGED" });
     expect(syncSheet).not.toHaveBeenCalled();
 });
+
+it("upgrades queued legacy form exports to stable submission keys before dispatch", async () => {
+    syncSheet.mockResolvedValue({ success: true });
+    await transaction(db => { db.outbox = []; queueSheet(db, "admissions", "Registrations", { referenceNo: "REG-1", customAnswer: "Keep answer" }, "submission-1"); });
+    await processOutbox();
+    expect(syncSheet.mock.calls[0][2][0]).toMatchObject({ referenceNo: "SUB-submission-1", responseReference: "REG-1", submissionId: "submission-1", customAnswer: "Keep answer" });
+});
+
+it("does not deliver a stale decision version restored to the queue", async () => {
+    await transaction(db => {
+        db.outbox = [];
+        db.selectionDecisions.push({ id: "decision", campaign_id: "camp-2025", student_id: "student", revision: 3, final_status: "selected", notification_status: "pending", approved_by: "staff", approved_at: new Date().toISOString() });
+        enqueue(db, "email", "decision:decision:selected:v1", { decisionId: "decision", to: "student@example.com", subject: "Old offer", html: "Old" });
+    });
+    await processOutbox();
+    expect(send).not.toHaveBeenCalled();
+    const db = await readDatabase(); expect(db.outbox[0].error_code).toBe("DECISION_SUPERSEDED"); expect(db.selectionDecisions[0].notification_status).toBe("pending");
+});
