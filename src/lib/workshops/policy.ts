@@ -25,7 +25,7 @@ export function workshopAttached(
   if (!config.enabled || config.hidden_ids?.includes(workshop.id)) return false;
   return config.selection_mode === "explicit" || config.workshop_ids.length > 0
     ? config.workshop_ids.includes(workshop.id)
-    : true;
+    : workshop.explicit_form_attachment !== true;
 }
 
 /** Shared by the builder preview, public display and final transactional booking. */
@@ -84,7 +84,7 @@ export function explicitWorkshopConfig(
     workshop_ids:
       current.selection_mode !== "explicit" && !current.workshop_ids.length
         ? workshops
-            .filter((w) => !campaignId || w.campaign_id === campaignId)
+            .filter((w) => (!campaignId || w.campaign_id === campaignId) && !w.explicit_form_attachment)
             .map((w) => w.id)
         : current.workshop_ids,
   };

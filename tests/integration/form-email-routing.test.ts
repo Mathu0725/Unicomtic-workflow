@@ -193,7 +193,7 @@ it("opens a workshop form immediately after matching reference and email without
     form.workshop_config = { enabled: true, required: true, workshop_ids: ["ws-1"], selection_mode: "explicit" };
     db.workshops.push({
       id: "ws-1", campaign_id: form.campaign_id!, title: "Test workshop", description: "",
-      venue: "Main campus", address: "", google_maps_url: "",
+      venue: "Main campus", address: "Jaffna campus", google_maps_url: "https://maps.google.com/?q=Jaffna",
       start_time: new Date(Date.now() + 7 * 86400000).toISOString(),
       end_time: new Date(Date.now() + 7 * 86400000 + 3600000).toISOString(),
       reminder_schedule: { days_before: [] }, is_active: true, created_at: new Date().toISOString(),
@@ -232,14 +232,19 @@ it("opens a workshop form immediately after matching reference and email without
   }), undefined);
   expect(registrationVerified.status).toBe(200);
   const response = await submit(
-    req(`/api/forms/${form.slug}`, { data: person(1), workshopId: "ws-1", expectedFormVersion: form.updated_at }, cookie),
+    req(`/api/forms/${form.slug}`, { data: person(1), workshopId: "ws-1", expectedFormVersion: form.updated_at }, cookie, { "idempotency-key": "workshop-confirmation-retry" }),
     { params: { slug: form.slug } },
   );
   expect(response.status).toBe(200);
+  const result = await response.json();
+  expect(result.workshop).toMatchObject({ title: "Test workshop", venue: "Main campus", address: "Jaffna campus", google_maps_url: "https://maps.google.com/?q=Jaffna" });
+  const replay = await submit(req(`/api/forms/${form.slug}`, { data: person(1), workshopId: "ws-1", expectedFormVersion: form.updated_at }, cookie, { "idempotency-key": "workshop-confirmation-retry" }), { params: { slug: form.slug } });
+  expect((await replay.json()).workshop).toEqual(result.workshop);
   const db = await readDatabase();
   expect(db.workshopBookings).toHaveLength(1);
   expect(db.workshopBookings[0].workshop_id).toBe("ws-1");
   expect(db.formSubmissions).toHaveLength(1);
+  expect(db.outbox.filter(job => job.type === "email" && job.payload.to === person(1).email)).toHaveLength(1);
 });
 it("deduplicates concurrent application retries and queues each recipient once", async () => {
   const responses = await Promise.all(

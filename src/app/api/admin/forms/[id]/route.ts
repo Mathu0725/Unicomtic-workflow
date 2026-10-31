@@ -11,6 +11,8 @@ import { richTextPlainText } from "@/lib/forms/rich-text";
 import { validateEmailAccount } from "@/lib/email/accounts";
 import { workshopTabReserved } from "@/lib/workshops/sheet-config";
 import { formSheetTarget } from "@/lib/google/sheet-target";
+import { workshopAttached } from "@/lib/workshops/policy";
+import { isGoogleMapsUrl } from "@/lib/workshops/confirmation";
 export const dynamic = "force-dynamic";
 const find = (id: string) =>
   getDb().customForms.find((f) => f.id === id || f.slug === id);
@@ -57,6 +59,8 @@ export const PATCH = route(
     if (workshopConfig?.workshop_ids.some(id => !getDb().workshops.some(w => w.id === id && w.campaign_id === form.campaign_id)))
       throw new RequestError("Choose workshops from this form's intake.");
     const effectiveConfig = workshopConfig || form.workshop_config;
+    if (parsed.data.action === "publish" && (parsed.data.status || form.status || "published") === "published" && effectiveConfig?.enabled && getDb().workshops.some(w => w.explicit_form_attachment && Date.parse(w.start_time) > Date.now() && workshopAttached(w, form.campaign_id, effectiveConfig) && !isGoogleMapsUrl(w.google_maps_url)))
+      throw new RequestError("Add a Google Maps link to each new visible workshop before publishing. You can save this form as a draft meanwhile.");
     if (parsed.data.action === "publish" && (parsed.data.status || form.status || "published") === "published" && effectiveConfig?.enabled && effectiveConfig.required && !availableWorkshops(form.campaign_id, effectiveConfig).some(w => w.bookable))
       throw new RequestError("The required workshop block has no open session with seats. Attach an available workshop or make selection optional before publishing.");
     if (parsed.data.action) {

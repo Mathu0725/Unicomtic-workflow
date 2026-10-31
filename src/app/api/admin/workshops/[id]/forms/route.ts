@@ -4,6 +4,7 @@ import { route, RequestError } from "@/lib/http";
 import { getDb } from "@/lib/data/store";
 import { editorValues } from "@/lib/forms/editor";
 import { explicitWorkshopConfig } from "@/lib/workshops/policy";
+import { showWorkshopOnForms } from "@/lib/workshops/form-attachment";
 import {
   requireWorkshopAdmin,
   findWorkshop,
@@ -15,6 +16,7 @@ const schema = z.object({
   formId: z.string().min(1),
   expectedUpdatedAt: z.string(),
   expectedDraftVersion: z.string().nullable(),
+  mode: z.enum(["draft", "live"]).optional(),
 });
 export const POST = route(
   async (req, { params }: { params: { id: string } }) => {
@@ -22,6 +24,10 @@ export const POST = route(
       db = getDb(),
       w = findWorkshop(db, params.id),
       actor = requireWorkshopAdmin(req);
+    if (input.mode === "live") {
+      const attachments = showWorkshopOnForms(db, w, [input], actor);
+      return NextResponse.json({ success: true, formId: input.formId, message: attachments[0].live ? "Workshop is now visible on this form." : "Attached to draft. Open Builder to review and publish." });
+    }
     const f = db.customForms.find(
       (f) => f.id === input.formId && f.campaign_id === w.campaign_id,
     );

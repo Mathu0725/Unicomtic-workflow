@@ -4,6 +4,7 @@ import { route, RequestError } from "@/lib/http";
 import { getDb } from "@/lib/data/store";
 import { workshopSchema } from "@/lib/validations/workshop";
 import { getSession } from "@/lib/security/session";
+import { showWorkshopOnForms, workshopAttachmentSchema } from "@/lib/workshops/form-attachment";
 import {
   requireWorkshopAdmin,
   saveWorkshop,
@@ -47,12 +48,14 @@ export const POST = route(
     const actor = requireWorkshopAdmin(req);
     if (!req.headers.get("idempotency-key"))
       throw new RequestError("A workshop creation retry key is required.");
-    const parsed = workshopSchema.safeParse(await req.json());
+    const parsed = workshopSchema.extend({ attachments: z.array(workshopAttachmentSchema).max(50).default([]) }).safeParse(await req.json());
     if (!parsed.success) throw new RequestError(parsed.error.issues[0].message);
     const workshop = saveWorkshop(getDb(), parsed.data, actor);
+    const attachedForms = showWorkshopOnForms(getDb(), workshop, parsed.data.attachments, actor);
     return NextResponse.json({
       success: true,
       workshop,
+      attachedForms,
       message:
         "Workshop created. Attach it to a form draft, then preview and publish.",
     });

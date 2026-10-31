@@ -23,7 +23,7 @@ export const workshopSchema = z.object({
   remindersEnabled: z.boolean().optional(),
   confirmationEnabled: z.boolean().optional(),
   reminderTemplate: z.enum(["workshop_reminder", "workshop_update"]).optional(),
-  confirmationTemplate: z.enum(["workshop_booking", "workshop_update"]).optional(),
+  confirmationTemplate: z.union([z.enum(["workshop_booking", "workshop_update"]), z.string().regex(/^custom:[0-9a-f-]{36}$/)]).optional(),
 });
 
 export type WorkshopFormData = z.infer<typeof workshopSchema>;

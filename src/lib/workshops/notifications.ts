@@ -4,12 +4,12 @@ import type { WorkshopBooking } from "../data/types";
 import { enqueue } from "../jobs/outbox";
 import {
   admissionEmailVariables,
-  renderNotification,
 } from "../email/notification-templates";
 import { appSecret } from "../security/secrets";
 import { safeEqual } from "../security/session";
 import { RequestError } from "../http";
 import { workshopEmailVersion, workshopJobBooking } from "./email-policy";
+import { renderWorkshopEmail } from "./email-content";
 
 export type WorkshopMailKind =
   "confirmation" | "scheduled" | "manual" | "update";
@@ -31,21 +31,7 @@ export function workshopMessage(
   return {
     to: s.email,
     toName: s.full_name,
-    ...renderNotification(
-      db,
-      template,
-      {
-        ...admissionEmailVariables(db, s, reg),
-        workshop: w.title,
-        date: new Date(w.start_time).toLocaleString("en-GB", {
-          timeZone: "Asia/Colombo",
-        }),
-        venue: w.venue,
-        address: w.address,
-        daysBefore: days || "",
-      },
-      w.google_maps_url || undefined,
-    ),
+    ...renderWorkshopEmail(db, w, template, admissionEmailVariables(db, s, reg), days),
     workshopMessage: {
       workshopId: w.id,
       bookingId: booking.id,
@@ -64,12 +50,27 @@ export function queueWorkshopConfirmation(
       ?.confirmation_enabled === false
   )
     return;
-  return enqueue(
-    db,
-    "email",
-    `booking:${booking.id}`,
-    workshopMessage(db, booking, "confirmation"),
-  );
+  return queueWorkshopAutomatic(db, booking, "confirmation");
+}
+export function queueWorkshopAutomatic(db: DatabaseStore, booking: WorkshopBooking, kind: "confirmation" | "scheduled", days?: number) {
+  const w = db.workshops.find(w => w.id === booking.workshop_id)!;
+  const key = kind === "confirmation" ? `booking:${booking.id}` : `reminder:${booking.id}:${days}:${w.start_time}`;
+  const existing = db.outbox.find(job => job.key === key);
+  if (existing) return existing;
+  try {
+    return enqueue(db, "email", key, workshopMessage(db, booking, kind, days));
+  } catch (error) {
+    if (!(error instanceof RequestError)) throw error;
+    const student = db.students.find(s => s.id === booking.student_id)!;
+    const job = enqueue(db, "email", key, {
+      to: student.email, toName: student.full_name, subject: "Workshop template needs review", html: "",
+      templateId: kind === "confirmation" ? w.confirmation_template || "workshop_booking" : w.reminder_template || "workshop_reminder",
+      workshopMessage: { workshopId: w.id, bookingId: booking.id, version: workshopEmailVersion(w), kind, days },
+    });
+    job.status = "blocked"; job.error_code = "TEMPLATE_INVALID";
+    job.error = error.message; job.repair_action = "review_template";
+    return job;
+  }
 }
 export function workshopDeliveries(db: DatabaseStore, workshopId: string) {
   return db.outbox

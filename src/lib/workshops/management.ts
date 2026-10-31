@@ -13,6 +13,8 @@ import {
 import { workshopDeliveries } from "./notifications";
 import { workshopEmailVersion } from "./email-policy";
 import { bookWorkshop } from "../admissions/service";
+import { workshopTemplate } from "./email-content";
+import { isGoogleMapsUrl } from "./confirmation";
 
 export function requireWorkshopAdmin(req: NextRequest) {
   const user = getSession(req);
@@ -245,10 +247,13 @@ export function saveWorkshop(
       "Choose a future booking deadline no later than the workshop start.",
     );
   const before = existing ? structuredClone(existing) : null;
+  if (data.googleMapsUrl && data.googleMapsUrl !== existing?.google_maps_url && !isGoogleMapsUrl(data.googleMapsUrl))
+    throw new RequestError("Use a Google Maps HTTPS share link, such as https://maps.app.goo.gl/…");
+  if (data.confirmationTemplate?.startsWith("custom:")) workshopTemplate(db, data.confirmationTemplate);
   const now = new Date().toISOString();
   const workshop: Workshop =
     existing ||
-    ({ id: randomUUID(), created_at: now, is_active: true } as Workshop);
+    ({ id: randomUUID(), created_at: now, is_active: true, explicit_form_attachment: true } as Workshop);
   Object.assign(workshop, {
     campaign_id: data.campaignId,
     title: data.title.trim(),
@@ -270,7 +275,7 @@ export function saveWorkshop(
       workshop.reminder_template ||
       "workshop_reminder",
     confirmation_template:
-      data.confirmationTemplate ||
+      data.confirmationTemplate as Workshop["confirmation_template"] ||
       workshop.confirmation_template ||
       "workshop_booking",
     updated_at: nextVersion(workshopVersion(workshop)),

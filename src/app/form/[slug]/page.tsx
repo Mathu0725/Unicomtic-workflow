@@ -10,6 +10,7 @@ import {
   resolveFormMessages,
 } from "@/lib/forms/messages";
 import FormThankYou from "@/components/form-thank-you";
+import type { WorkshopConfirmation } from "@/lib/workshops/confirmation";
 import DocumentUploadField from "@/components/document-upload-field";
 import { submitRequest } from "@/lib/client/submit";
 import { apiResponse, readJson, responseError } from "@/lib/client/api";
@@ -47,6 +48,7 @@ export default function PublicCustomFormPage() {
     referenceNo?: string;
     confirmationMessage?: string;
     redirectUrl?: string;
+    workshop?: WorkshopConfirmation | null;
   } | null>(null);
   const submissionInFlight = useRef(false);
   const [draftRestored, setDraftRestored] = useState(false);
@@ -410,6 +412,7 @@ export default function PublicCustomFormPage() {
         message={submitted.confirmationMessage || form.confirmationMessage}
         referenceNo={submitted.referenceNo}
         redirectUrl={submitted.redirectUrl}
+        workshop={submitted.workshop}
       />
     );
   const messages = resolveFormMessages(form.messages);

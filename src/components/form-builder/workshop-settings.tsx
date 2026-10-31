@@ -212,6 +212,10 @@ export default function WorkshopSettings({
         checked={config.show_remaining !== false}
         onChange={(show_remaining) => change({ show_remaining })}
       />
+      {form.type === "workshop_rsvp" && <div className="space-y-2 rounded-lg border p-3">
+        <Toggle label="Also send the form receipt email" checked={config.send_form_receipt === true} onChange={(send_form_receipt) => change({ send_form_receipt })} />
+        <p className="text-xs text-slate-600">{config.send_form_receipt ? "Students receive 2 emails when both workshop confirmation and form applicant emails are enabled." : "One workshop confirmation is sent for a new booking. If workshop confirmation is off or no workshop is selected, the form's applicant email settings apply."}</p>
+      </div>}
       <button
         type="button"
         className={buttonClass}

@@ -29,6 +29,7 @@ type Data = {
     updatedAt: string;
     draftVersion: string | null;
     draftAttached: boolean;
+    visibility: string;
   }[];
   transferTargets: ReturnType<typeof workshopSummary>[];
 };
@@ -79,7 +80,7 @@ function WorkshopDetails({ id }: { id: string }) {
       setBusy(false);
     }
   }
-  async function attach() {
+  async function attach(mode: "draft" | "live") {
     const f = data!.forms.find((f) => f.id === formId);
     if (!f || busy) return;
     setBusy(true);
@@ -89,6 +90,7 @@ function WorkshopDetails({ id }: { id: string }) {
         "/api/admin/workshops/" + encodeURIComponent(id) + "/forms",
         {
           formId: f.id,
+          mode,
           expectedUpdatedAt: f.updatedAt,
           expectedDraftVersion: f.draftVersion,
         },
@@ -227,8 +229,7 @@ function WorkshopDetails({ id }: { id: string }) {
                 <div className="space-y-3 rounded-xl border p-4">
                   <h2 className="font-bold">Attach to a form</h2>
                   <p className="text-sm text-slate-600">
-                    Add this workshop to the form's saved draft. Existing draft
-                    edits are preserved. Preview and publish in Builder.
+                    Show this workshop on a live form now, or attach it to a draft for review. Other draft edits stay saved. Add a Google Maps link before showing it live.
                   </p>
                   <label className="block text-sm">
                     Choose form
@@ -249,10 +250,11 @@ function WorkshopDetails({ id }: { id: string }) {
                   <button
                     disabled={busy || !formId || Boolean(error)}
                     className={buttonClass}
-                    onClick={() => void attach()}
+                    onClick={() => void attach("live")}
                   >
-                    Attach to draft
+                    Show on selected form
                   </button>
+                  <button disabled={busy || !formId || Boolean(error)} className="ml-3 rounded-lg border px-3 py-2 text-sm" onClick={() => void attach("draft")}>Attach to draft</button>
                   {formId && (
                     <Link
                       className="ml-3 text-sm font-semibold text-blue-700 underline"
@@ -266,13 +268,13 @@ function WorkshopDetails({ id }: { id: string }) {
                     </Link>
                   )}
                   <h3 className="text-sm font-semibold">
-                    Published attachments
+                    Form visibility
                   </h3>
-                  {w.attachedForms.length ? (
-                    w.attachedForms.map((f) => (
+                  {data.forms.length ? (
+                    data.forms.map((f) => (
                       <p key={f.id} className="text-sm">
                         {f.title}
-                        {f.hidden ? " · hidden on this form" : ""}
+                        {" · " + f.visibility}
                       </p>
                     ))
                   ) : (

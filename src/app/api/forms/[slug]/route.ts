@@ -139,6 +139,7 @@ export const POST = route(
       message:
         "Your response is saved. Email and Google Sheets updates are queued and tracked.",
       confirmationMessage: form.confirmation_message,
+      workshop: result.submission.workshop_snapshot || null,
       redirectUrl: form.redirect_url || null,
     });
   },

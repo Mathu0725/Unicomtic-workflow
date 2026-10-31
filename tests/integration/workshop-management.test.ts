@@ -55,6 +55,9 @@ import { workshopBookingSheetRow } from "../../src/lib/workshops/booking-sheet-r
 import { runScheduledQueue } from "../../src/lib/jobs/scheduled-queue";
 import { processOutbox } from "../../src/lib/jobs/outbox";
 import { editorValues } from "../../src/lib/forms/editor";
+import { changeReusableTemplate } from "../../src/lib/email/reusable-templates";
+import { POST as workshopOptionsAction } from "../../src/app/api/admin/workshops/options/route";
+import { isGoogleMapsUrl } from "../../src/lib/workshops/confirmation";
 let dir: string;
 const ctx = (id = "workshop-1") => ({ params: Promise.resolve({ id }) });
 const request = (
@@ -181,6 +184,88 @@ afterEach(async () => {
   vi.restoreAllMocks();
   await rm(dir, { recursive: true, force: true });
 });
+it("creates and publishes only workshop settings while retaining unrelated draft edits, once on retry", async () => {
+  await transaction(db => {
+    const f = db.customForms[0];
+    f.is_active = true; f.status = "published";
+    f.workshop_config = { enabled: false, required: false, workshop_ids: [], selection_mode: "explicit" };
+    f.editor_draft = { version: "saved-draft", base_updated_at: f.updated_at, values: { ...editorValues(f), title: "Unpublished title" } };
+  });
+  const before = await readDatabase(), f = before.customForms[0], key = randomUUID();
+  const payload = { ...values(before.workshops[0]), googleMapsUrl: "https://maps.app.goo.gl/Example", attachments: [{ formId: f.id, expectedUpdatedAt: f.updated_at, expectedDraftVersion: "saved-draft" }] };
+  const responses = await Promise.all([1, 2].map(() => create(request("/api/admin/workshops", payload, "POST", "admin", key), {})));
+  expect(responses.map(r => r.status)).toEqual([200, 200]);
+  const result = await responses[0].json(), db = await readDatabase(), saved = db.customForms[0];
+  expect(db.workshops).toHaveLength(11);
+  expect(result.attachedForms[0].live).toBe(true);
+  expect(saved.title).toBe(f.title);
+  expect(saved.editor_draft?.values.title).toBe("Unpublished title");
+  expect(saved.editor_draft?.base_updated_at).toBe(saved.updated_at);
+  expect(saved.editor_draft?.values.workshop_config?.workshop_ids).toContain(result.workshop.id);
+  const publicResponse = await publicForm(request(`/api/forms/${f.slug}`, undefined, "GET", ""), { params: { slug: f.slug } });
+  expect((await publicResponse.json()).form.workshops.map((w: Workshop) => w.id)).toEqual([result.workshop.id]);
+  expect(databaseContext.run(db, () => availableWorkshops(f.campaign_id, { enabled: true, required: false, workshop_ids: [] })).some(w => w.id === result.workshop.id)).toBe(false);
+});
+it("rolls back workshop creation when attachment conflicts, and requires a Maps share link for live attachment", async () => {
+  await transaction(db => {
+    const f = db.customForms[0]; f.is_active = true; f.status = "published";
+    f.workshop_config = { enabled: false, required: false, workshop_ids: [], selection_mode: "explicit" };
+    f.editor_draft = { version: "draft", base_updated_at: f.updated_at, values: { ...editorValues(f), workshop_config: { ...f.workshop_config, enabled: true } } };
+  });
+  const db = await readDatabase(), f = db.customForms[0];
+  const payload = { ...values(db.workshops[0]), attachments: [{ formId: f.id, expectedUpdatedAt: f.updated_at, expectedDraftVersion: "draft" }] };
+  expect((await create(request("/api/admin/workshops", payload), {})).status).toBe(400);
+  expect((await create(request("/api/admin/workshops", { ...payload, googleMapsUrl: "https://maps.google.com/?q=Jaffna" }), {})).status).toBe(409);
+  expect((await readDatabase()).workshops).toHaveLength(10);
+  expect(isGoogleMapsUrl("https://maps.app.goo.gl/abc")).toBe(true);
+  expect(isGoogleMapsUrl("https://google.com.evil.test/maps")).toBe(false);
+  expect(isGoogleMapsUrl("javascript:alert(1)")).toBe(false);
+});
+it("keeps a closed form closed when attaching an existing workshop", async () => {
+  await transaction(db => { db.customForms[0].is_active = false; db.workshops[0].google_maps_url = "https://www.google.com/maps/place/Jaffna"; });
+  const before = await readDatabase(), f = before.customForms[0];
+  const result = await attach(request("/api/admin/workshops/workshop-1/forms", { formId: f.id, expectedUpdatedAt: f.updated_at, expectedDraftVersion: null, mode: "live" }), ctx());
+  expect(result.status).toBe(200);
+  const saved = (await readDatabase()).customForms[0];
+  expect(saved.is_active).toBe(false);
+  expect(saved.updated_at).toBe(f.updated_at);
+  expect(saved.editor_draft?.values.workshop_config?.workshop_ids).toContain("workshop-1");
+});
+it("requires Maps when publishing newly created workshops through Builder", async () => {
+  await transaction(db => { db.workshops[0].explicit_form_attachment = true; });
+  const f = (await readDatabase()).customForms[0];
+  const response = await saveForm(request(`/api/admin/forms/${f.id}`, {
+    action: "publish", expectedUpdatedAt: f.updated_at, expectedDraftVersion: null,
+    workshop_config: { enabled: true, required: false, workshop_ids: ["workshop-1"], selection_mode: "explicit" },
+  }, "PATCH"), { params: { id: f.id } });
+  expect(response.status).toBe(400);
+  expect((await response.json()).message).toContain("Google Maps");
+});
+it("renders the selected reusable workshop template, snapshots queued content and blocks invalid templates without losing bookings", async () => {
+  let templateId = "";
+  await transaction(db => {
+    const template = changeReusableTemplate(db, { action: "create", title: "Workshop welcome", formId: "", purpose: "workshop", actionLabel: "Directions", subject: "Booked: {{workshop}}", bodyHtml: "<p>Hello {{name}}. {{date}} at {{venue}}, {{address}}. {{startTime}}–{{endTime}}</p>" }, "staff@example.com");
+    templateId = template.id;
+    db.workshops[0].confirmation_template = `custom:${template.id}`;
+    db.workshops[0].google_maps_url = "https://maps.app.goo.gl/Example";
+  });
+  const first = await book(1);
+  let db = await readDatabase();
+  const job = db.outbox.find(j => j.key === `booking:${first.id}`)!;
+  expect(job.status).toBe("queued");
+  expect(job.payload.subject).toBe("Booked: Workshop 1");
+  expect(job.payload.html).toContain("Directions");
+  expect(job.payload.html).toContain("Campus Road");
+  const previewResponse = await workshopOptionsAction(request("/api/admin/workshops/options", { action: "preview", workshop: { ...values(db.workshops[0]), confirmationTemplate: `custom:${templateId}` } }), {});
+  expect(previewResponse.status).toBe(200);
+  expect((await previewResponse.json()).message.subject).toBe(job.payload.subject);
+  await transaction(db => { db.customEmailTemplates.find(t => t.id === templateId)!.is_active = false; });
+  const second = await book(2);
+  db = await readDatabase();
+  expect(db.workshopBookings).toHaveLength(2);
+  expect(db.outbox.find(j => j.key === `booking:${first.id}`)?.payload.html).toBe(job.payload.html);
+  expect(db.outbox.find(j => j.key === `booking:${second.id}`)?.status).toBe("blocked");
+});
 it("creates a workshop once on simultaneous retries and never copies old bookings", async () => {
   const db = await readDatabase(),
     payload = values(db.workshops[0]),
@@ -196,6 +281,27 @@ it("creates a workshop once on simultaneous retries and never copies old booking
   expect(responses.map((r) => r.status)).toEqual([200, 200]);
   expect((await readDatabase()).workshops).toHaveLength(11);
   expect((await readDatabase()).workshopBookings).toHaveLength(0);
+});
+it.each([
+  { confirmation: true, extraReceipt: false, expected: 1 },
+  { confirmation: true, extraReceipt: true, expected: 2 },
+  { confirmation: false, extraReceipt: false, expected: 1 },
+])("routes RSVP emails explicitly: $confirmation confirmation / $extraReceipt extra receipt", async ({ confirmation, extraReceipt, expected }) => {
+  await transaction(db => {
+    const f = db.customForms[0]; f.type = "workshop_rsvp";
+    f.fields = [{ id: "fullName", type: "text", label: "Name", required: true }, { id: "email", type: "email", label: "Email", required: true }, { id: "nic", type: "nic", label: "NIC", required: true }, { id: "phone", type: "phone", label: "Phone", required: true }, { id: "terms", type: "terms", label: "Consent", required: true }];
+    f.workshop_config = { enabled: true, required: true, selection_mode: "explicit", workshop_ids: ["workshop-1"], send_form_receipt: extraReceipt };
+    f.email_automation = { ...f.email_automation, enabled: true, send_applicant_email: true, send_admin_notification: false, applicant_template: "form", applicant_subject: "Your form receipt", applicant_body_html: "<p>Thanks {{name}}</p>" };
+    db.workshops[0].confirmation_enabled = confirmation;
+    submitCustomForm(f, person(), { workshopId: "workshop-1" });
+  });
+  const db = await readDatabase();
+  expect(db.outbox.filter(j => j.type === "email" && j.payload.to === person().email)).toHaveLength(expected);
+  if (confirmation) {
+    const bookingJob = db.outbox.find(j => j.key.startsWith("booking:"))!;
+    await processOutbox(1, 1000, bookingJob.id);
+    expect((await readDatabase()).formSubmissions[0].email_sent).toBe(true);
+  }
 });
 it.each(["entrance_staff", "examiner", ""])(
   "rejects workshop writes and reminder previews for %s",

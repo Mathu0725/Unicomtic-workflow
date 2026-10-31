@@ -211,6 +211,12 @@ export async function processOutbox(limit = 120, timeBudgetMs = 45000, onlyJobId
                         sub.email_sent = true;
                 }
                 const decision = state.selectionDecisions.find(d => d.id === job.payload.decisionId);
+                if (job.payload.workshopMessage?.kind === "confirmation") {
+                    const booking = state.workshopBookings.find(b => b.id === job.payload.workshopMessage.bookingId);
+                    if (booking) for (const response of state.formSubmissions) {
+                        if (booking.source_submission_ids?.includes(response.id) && state.customForms.some(f => f.id === response.form_id && f.type === "workshop_rsvp")) response.email_sent = true;
+                    }
+                }
                 if (decision) {
                     decision.notification_status = "sent";
                     decision.notified_at = saved.completed_at;

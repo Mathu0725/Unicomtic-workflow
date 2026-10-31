@@ -131,6 +131,7 @@ export const workshopConfigSchema = z.object({
   help_text: z.string().max(500).optional(),
   empty_message: z.string().max(500).optional(),
   show_remaining: z.boolean().optional(),
+  send_form_receipt: z.boolean().optional(),
 }).refine(config => (config.hidden_ids || []).every(id => config.workshop_ids.includes(id)), "Hidden workshops must be attached to this form.");
 export const sheetsConfigSchema = z.object({
   enabled: z.boolean(),

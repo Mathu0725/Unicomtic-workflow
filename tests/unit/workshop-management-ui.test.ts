@@ -18,6 +18,7 @@ import WorkshopSettings from "../../src/components/form-builder/workshop-setting
 import WorkshopParticipants from "../../src/components/workshop-participants";
 import WorkshopReminders from "../../src/components/workshop-reminders";
 import WorkshopsPage from "../../src/app/admin/workshops/page";
+import FormThankYou from "../../src/components/form-thank-you";
 const mocks = vi.hoisted(() => ({
   api: vi.fn(),
   submit: vi.fn(),
@@ -102,6 +103,7 @@ beforeEach(() => {
     success: true,
     workshop: w,
     campaigns: [{ id: "intake", title: "Intake" }],
+    forms: [], templates: [],
   });
   mocks.submit.mockImplementation(
     async () =>
@@ -127,6 +129,23 @@ beforeEach(() => {
   };
 });
 afterEach(() => cleanup());
+it("selects a live form when creating and passes its version for safe publication", async () => {
+  mocks.api.mockResolvedValue({ forms: [{ id: "form-1", title: "Workshop RSVP", campaignId: "intake", updatedAt: "version-1", draftVersion: null, status: "Live" }], templates: [] });
+  render(createElement(WorkshopEditor, { workshop: w, duplicate: true, allowAttachments: true, onSaved: vi.fn() }));
+  fireEvent.change(screen.getByLabelText("Starts (your local time)"), { target: { value: "2030-11-15T09:00" } });
+  fireEvent.change(screen.getByLabelText("Ends (your local time)"), { target: { value: "2030-11-15T12:00" } });
+  fireEvent.change(screen.getByLabelText("Google Maps link"), { target: { value: "https://maps.app.goo.gl/Example" } });
+  fireEvent.click(await screen.findByLabelText(/Workshop RSVP/));
+  fireEvent.submit(screen.getByRole("button", { name: "Create & show on selected forms" }).closest("form")!);
+  await waitFor(() => expect(mocks.submit).toHaveBeenCalledWith("/api/admin/workshops", expect.objectContaining({ attachments: [{ formId: "form-1", expectedUpdatedAt: "version-1", expectedDraftVersion: null }] })));
+});
+it("renders confirmed workshop details and a safe external Maps action with the editable thank-you message", () => {
+  render(createElement(FormThankYou, { message: "Bring your NIC and arrive early.", referenceNo: "REG-SAMPLE", workshop: { ...w, google_maps_url: "https://maps.app.goo.gl/Example" } }));
+  expect(screen.getByText("Bring your NIC and arrive early.")).toBeTruthy();
+  expect(screen.getByText("Workshop 1")).toBeTruthy();
+  expect(screen.getByText("Campus Road")).toBeTruthy();
+  expect(screen.getByRole("link", { name: /Open in Google Maps/ }).getAttribute("href")).toBe("https://maps.app.goo.gl/Example");
+});
 it("lists ten distinct workshop links and filters by name", async () => {
   render(createElement(WorkshopsPage));
   expect(screen.getAllByRole("link", { name: /Open workshop/ })).toHaveLength(
@@ -184,9 +203,10 @@ it("keeps an edit's expected version and original timestamps when a background r
   expect(saved).toHaveBeenCalled();
 });
 it("retains a stale edit for review after a version conflict", async () => {
-  mocks.api.mockRejectedValueOnce(
-    new Error("This workshop changed. Reload before saving."),
-  );
+  mocks.api.mockImplementation(async (url: string) => {
+    if (url === "/api/admin/workshops/options") return { forms: [], templates: [] };
+    throw new Error("This workshop changed. Reload before saving.");
+  });
   render(createElement(WorkshopEditor, { workshop: w, onSaved: vi.fn() }));
   fireEvent.change(screen.getByLabelText("Total seats"), {
     target: { value: "80" },

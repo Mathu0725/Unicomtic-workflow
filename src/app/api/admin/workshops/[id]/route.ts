@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { route } from "@/lib/http";
 import { getDb } from "@/lib/data/store";
 import { getSession } from "@/lib/security/session";
+import { workshopVisibility } from "@/lib/workshops/form-attachment";
 import {
   findWorkshop,
   workshopDetail,
@@ -32,6 +33,7 @@ export const GET = route(
                   title: f.title,
                   updatedAt: f.updated_at,
                   draftVersion: f.editor_draft?.version || null,
+                  visibility: workshopVisibility(db, w, f.id),
                   draftAttached: Boolean(
                     f.editor_draft?.values.workshop_config?.workshop_ids.includes(
                       w.id,

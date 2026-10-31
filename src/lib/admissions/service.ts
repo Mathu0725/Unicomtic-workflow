@@ -15,6 +15,7 @@ import { extraAnswerProblem, formAvailabilityProblem, uniqueAnswer, visibleFormF
 import { queueWorkshopBooking } from "../workshops/sheet-sync";
 import { workshopOptions } from "../workshops/policy";
 import { queueWorkshopConfirmation } from "../workshops/notifications";
+import { workshopConfirmation } from "../workshops/confirmation";
 import type { WorkshopBooking } from "../data/types";
 export const escaped = (value: any) => String(value ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
 export const normalizeEmail = (value: any) => String(value || "").trim().toLowerCase();
@@ -128,7 +129,9 @@ export function notifySubmission(student: Student, reg: Registration, app?: Appl
         }
         return job;
     };
-    if (!form || (form.email_automation.enabled && form.email_automation.send_applicant_email)) {
+    const hasWorkshopConfirmation = form?.type === "workshop_rsvp" && sub?.workshop_id && form.workshop_config?.send_form_receipt !== true && db.workshops.some(w => w.id === sub.workshop_id && w.confirmation_enabled !== false) &&
+        db.workshopBookings.some(booking => booking.workshop_id === sub.workshop_id && booking.student_id === student.id && booking.status === "confirmed" && db.outbox.some(job => job.key === `booking:${booking.id}`));
+    if (!hasWorkshopConfirmation && (!form || (form.email_automation.enabled && form.email_automation.send_applicant_email))) {
         const selectedTemplate = form?.email_automation.applicant_template;
         const usesFormTemplate = Boolean(form?.email_automation.enabled && (!selectedTemplate || selectedTemplate === "form"));
         const receipt = renderNotification(db, selectedTemplate && selectedTemplate !== "form" ? selectedTemplate : templateId, vars, trackingUrl);
@@ -240,7 +243,9 @@ export function submitCustomForm(form: CustomForm, input: Record<string, any>, o
     if (booking) {
         booking.source_submission_ids = [...new Set([...(booking.source_submission_ids || []), submission.id])];
         const selected = db.workshops.find(w => w.id === booking.workshop_id)!;
-        submission.workshop_snapshot = { title: selected.title, start_time: selected.start_time, venue: selected.venue };
+        submission.workshop_snapshot = workshopConfirmation(selected);
+        const confirmation = db.outbox.find(job => job.key === `booking:${booking.id}`);
+        if (form.type === "workshop_rsvp" && confirmation?.status === "sent") submission.email_sent = true;
         queueWorkshopBooking(db, booking.id);
     }
     for (const [fieldId, upload] of documents) {

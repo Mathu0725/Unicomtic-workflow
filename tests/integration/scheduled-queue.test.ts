@@ -96,6 +96,7 @@ it("keeps only a safe failure code and allows the next scheduled attempt to reco
 it("queues one reminder per booking/window across repeated triggers", async () => {
     await transaction(db => {
         db.students.push({ id: "student-1", full_name: "<Candidate>", email: "candidate@example.com" } as any);
+        db.registrations.push({ id: "registration-1", student_id: "student-1", reference_no: "REG-SAMPLE", status: "registered" } as any);
         db.workshops.push({ id: "workshop-1", is_active: true, title: "Workshop", start_time: new Date(Date.now() + 60 * 3600000).toISOString(), venue: "<Campus>", address: "Address", reminder_schedule: { days_before: [3, 1] } } as any);
         db.workshopBookings.push({ id: "booking-1", workshop_id: "workshop-1", student_id: "student-1", registration_id: "registration-1", status: "confirmed", created_at: new Date().toISOString() });
     });

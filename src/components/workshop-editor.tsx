@@ -1,5 +1,5 @@
 "use client";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import type { Workshop } from "@/lib/data/store";
 import { api, buttonClass, inputClass, Notice } from "./live-data";
@@ -13,12 +13,15 @@ const local = (value?: string) => {
     .toISOString()
     .slice(0, 16);
 };
+type FormChoice = { id: string; title: string; slug: string; campaignId?: string; updatedAt: string; draftVersion: string | null; status: string };
+export type WorkshopAttachmentResult = { id: string; title: string; slug: string; live: boolean };
 export default function WorkshopEditor({
   workshop: initialWorkshop,
   duplicate = false,
   campaignId,
   campaigns = [],
   communicationsOnly = false,
+  allowAttachments = false,
   onSaved,
   onCancel,
 }: {
@@ -27,7 +30,8 @@ export default function WorkshopEditor({
   campaignId?: string;
   campaigns?: { id: string; title: string }[];
   communicationsOnly?: boolean;
-  onSaved: (w: Workshop) => void | Promise<void>;
+  allowAttachments?: boolean;
+  onSaved: (w: Workshop, attachments?: WorkshopAttachmentResult[]) => void | Promise<void>;
   onCancel?: () => void;
 }) {
   const [workshop] = useState(initialWorkshop);
@@ -54,6 +58,45 @@ export default function WorkshopEditor({
     [attemptId] = useState(() => crypto.randomUUID());
   const lock = useRef(false),
     endpoint = "/api/admin/workshops";
+  const [options, setOptions] = useState<{ forms: FormChoice[]; templates: { id: string; title: string }[] }>({ forms: [], templates: [] });
+  const [selectedForms, setSelectedForms] = useState<string[]>([]);
+  const [preview, setPreview] = useState<{ subject: string; html: string } | null>(null);
+  const [optionsError, setOptionsError] = useState("");
+  const [optionsLoading, setOptionsLoading] = useState(true);
+  const [optionsAttempt, setOptionsAttempt] = useState(0);
+  useEffect(() => {
+    const controller = new AbortController();
+    setOptionsLoading(true);
+    api("/api/admin/workshops/options", undefined, "GET", controller.signal).then(data => {
+      if (!controller.signal.aborted) { setOptions(data); setOptionsError(""); }
+    }).catch((cause: Error) => { if (!controller.signal.aborted) setOptionsError(cause.message); }).finally(() => { if (!controller.signal.aborted) setOptionsLoading(false); });
+    return () => controller.abort();
+  }, [optionsAttempt]);
+  function payload() {
+    if (!draft.startTime || !draft.endTime || !Number.isFinite(Date.parse(draft.startTime)) || !Number.isFinite(Date.parse(draft.endTime)))
+      throw new Error("Choose a valid start date/time and end date/time before saving or previewing.");
+    const days = draft.days.trim() ? draft.days.split(",").map(s => Number(s.trim())) : [];
+    if (days.some(n => !Number.isInteger(n) || n < 1 || n > 90)) throw new Error("Enter reminder days as whole numbers from 1 to 90, separated by commas.");
+    return { ...draft, clientAttemptId: attemptId, capacity: Number(draft.capacity), daysBeforeReminders: days,
+      startTime: editing && draft.startTime === local(workshop?.start_time) ? workshop!.start_time : new Date(draft.startTime).toISOString(),
+      endTime: editing && draft.endTime === local(workshop?.end_time) ? workshop!.end_time : new Date(draft.endTime).toISOString(),
+      bookingDeadline: editing && draft.bookingDeadline === local(workshop?.booking_deadline) ? workshop?.booking_deadline || "" : draft.bookingDeadline ? new Date(draft.bookingDeadline).toISOString() : "",
+    };
+  }
+  async function emailAction(action: "preview" | "duplicate") {
+    if (lock.current) return;
+    lock.current = true; setBusy(true); setError("");
+    try {
+      const result = await api("/api/admin/workshops/options", action === "preview"
+        ? { action, workshop: payload() } : { action, templateId: draft.confirmationTemplate });
+      if (action === "preview") setPreview(result.message);
+      else {
+        update("confirmationTemplate", result.templateId);
+        setOptionsAttempt(value => value + 1);
+      }
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Could not prepare the email."); }
+    finally { setBusy(false); lock.current = false; }
+  }
   async function save(e: React.FormEvent) {
     e.preventDefault();
     if (lock.current) return;
@@ -61,51 +104,27 @@ export default function WorkshopEditor({
     setBusy(true);
     setError("");
     try {
-      const days = draft.days.trim()
-        ? draft.days.split(",").map((s) => Number(s.trim()))
-        : [];
-      if (days.some((n) => !Number.isInteger(n) || n < 1 || n > 90))
-        throw new Error(
-          "Enter reminder days as whole numbers from 1 to 90, separated by commas.",
-        );
-      const payload = {
-        ...draft,
-        clientAttemptId: attemptId,
-        capacity: Number(draft.capacity),
-        daysBeforeReminders: days,
-        startTime:
-          editing && draft.startTime === local(workshop?.start_time)
-            ? workshop!.start_time
-            : new Date(draft.startTime).toISOString(),
-        endTime:
-          editing && draft.endTime === local(workshop?.end_time)
-            ? workshop!.end_time
-            : new Date(draft.endTime).toISOString(),
-        bookingDeadline:
-          editing && draft.bookingDeadline === local(workshop?.booking_deadline)
-            ? workshop?.booking_deadline || ""
-            : draft.bookingDeadline
-              ? new Date(draft.bookingDeadline).toISOString()
-              : "",
-      };
+      const values = payload();
+      const saveOnly = (e.nativeEvent as SubmitEvent).submitter?.getAttribute("value") === "only";
+      const attachments = !editing && allowAttachments && !saveOnly ? options.forms.filter(f => f.campaignId === draft.campaignId && selectedForms.includes(f.id)).map(f => ({ formId: f.id, expectedUpdatedAt: f.updatedAt, expectedDraftVersion: f.draftVersion })) : [];
       let result;
       if (editing)
         result = await api(
           endpoint,
           {
-            ...payload,
+            ...values,
             id: workshop!.id,
             expectedVersion: workshop!.updated_at || workshop!.created_at,
           },
           "PATCH",
         );
       else {
-        const response = await submitRequest(endpoint, payload);
+        const response = await submitRequest(endpoint, { ...values, attachments });
         result = await readJson(response);
         if (!response.ok || !result.success)
           throw responseError(response, result);
       }
-      await onSaved(result.workshop);
+      await onSaved(result.workshop, result.attachedForms);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not save workshop.");
     } finally {
@@ -113,8 +132,11 @@ export default function WorkshopEditor({
       lock.current = false;
     }
   }
-  const update = (key: string, value: string | boolean) =>
+  const update = (key: string, value: string | boolean) => {
+    setPreview(null);
+    if (key === "campaignId") setSelectedForms([]);
     setDraft((s) => ({ ...s, [key]: value }));
+  };
   return (
     <form onSubmit={save} className="space-y-4">
       <h2 className="text-lg font-bold">
@@ -129,7 +151,7 @@ export default function WorkshopEditor({
         <SubmissionRecovery
           url={endpoint}
           show={Boolean(error || pendingPayload(endpoint))}
-          onResolved={(result) => void onSaved(result.workshop)}
+          onResolved={(result) => void onSaved(result.workshop, result.attachedForms)}
         />
       )}
       <fieldset disabled={busy} className="space-y-4">
@@ -164,7 +186,7 @@ export default function WorkshopEditor({
                   "Booking deadline (optional)",
                   "datetime-local",
                 ],
-                ["googleMapsUrl", "Location link (optional)", "url"],
+                ["googleMapsUrl", "Google Maps link", "url"],
               ] as const
             ).map(([key, label, type]) => (
               <label key={key} className="text-sm font-semibold">
@@ -174,7 +196,8 @@ export default function WorkshopEditor({
                   type={type}
                   min={type === "number" ? 1 : undefined}
                   max={type === "number" ? 100000 : undefined}
-                  required={!["bookingDeadline", "googleMapsUrl"].includes(key)}
+                  required={key === "googleMapsUrl" ? selectedForms.length > 0 : key !== "bookingDeadline"}
+                  placeholder={key === "googleMapsUrl" ? "https://maps.app.goo.gl/…" : undefined}
                   value={draft[key]}
                   onChange={(e) => update(key, e.target.value)}
                 />
@@ -215,12 +238,18 @@ export default function WorkshopEditor({
                 value={draft.confirmationTemplate}
                 onChange={(e) => update("confirmationTemplate", e.target.value)}
               >
-                <option value="workshop_booking">
-                  Workshop booking confirmation
-                </option>
-                <option value="workshop_update">Workshop details update</option>
+                {(options.templates.length ? options.templates : [{ id: "workshop_booking", title: "Workshop booking confirmation" }, { id: "workshop_update", title: "Workshop details update" }]).map(t => <option key={t.id} value={t.id}>{t.title}</option>)}
+                {draft.confirmationTemplate.startsWith("custom:") && !options.templates.some(t => t.id === draft.confirmationTemplate) && <option value={draft.confirmationTemplate}>Selected template unavailable — choose another</option>}
               </select>
             </label>
+            <div className="flex flex-wrap items-center gap-3">
+              <button type="button" className="rounded-lg border px-3 py-2 font-semibold" onClick={() => void emailAction("preview")}>Preview with this workshop</button>
+              <button type="button" className="rounded-lg border px-3 py-2 font-semibold" onClick={() => void emailAction("duplicate")}>Duplicate as my template</button>
+              <Link target="_blank" rel="noopener noreferrer" className="font-semibold text-blue-700 underline" href={draft.confirmationTemplate.startsWith("custom:") ? `/admin/email/reusable-templates?template=${encodeURIComponent(draft.confirmationTemplate.slice(7))}` : "/admin/email/templates"}>Edit selected template ↗</Link>
+            </div>
+            <p className="text-xs text-slate-500">Duplicate a shared template to change wording for this workshop. Save the edited template, then refresh templates here.</p>
+            <button type="button" className="text-xs font-semibold text-blue-700 underline" onClick={() => { setOptionsAttempt(n => n + 1); setPreview(null); }}>Refresh templates & forms</button>
+            {preview && <div className="space-y-2 rounded-lg border bg-white p-3"><p className="font-semibold">{preview.subject}</p><p className="text-xs text-slate-500">Sample student · No email is sent by this preview.</p><iframe title="Workshop confirmation email preview" sandbox="" srcDoc={`<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'">${preview.html}`} className="h-72 w-full rounded-lg border" /></div>}
             <label className="flex gap-2">
               <input
                 type="checkbox"
@@ -249,9 +278,7 @@ export default function WorkshopEditor({
               </select>
             </label>
             <p className="text-xs text-slate-600">
-              Closing new bookings keeps reminders enabled for existing
-              participants. Form receipt emails are a separate choice in the
-              form's Email settings.
+              Workshop RSVP forms send one booking confirmation by default. In Builder → Workshop settings, enable “Also send the form receipt email” to send two. Registration and application receipts use their own form settings.
             </p>
             <Link
               href="/admin/email/templates"
@@ -265,10 +292,19 @@ export default function WorkshopEditor({
             </p>
           </div>
         </details>
+        <Notice error>{optionsError}</Notice>
+        {!editing && allowAttachments && <section className="space-y-3 rounded-xl border border-blue-200 bg-blue-50/40 p-4">
+          <h3 className="font-semibold">Show in forms</h3>
+          <p className="text-sm text-slate-600">Select forms from this intake. Live forms show the workshop immediately; closed or draft forms receive a saved draft attachment.</p>
+          {options.forms.filter(f => f.campaignId === draft.campaignId).map(f => <label key={f.id} className="flex items-start gap-3 rounded-lg border bg-white p-3 text-sm"><input type="checkbox" className="mt-1" checked={selectedForms.includes(f.id)} onChange={e => setSelectedForms(ids => e.target.checked ? [...ids, f.id] : ids.filter(id => id !== f.id))} /><span><strong>{f.title}</strong><span className="block text-xs text-slate-500">{f.status === "Live" ? "Will appear immediately" : `${f.status} · attach to draft`}</span></span></label>)}
+          {optionsLoading ? <p role="status" className="text-sm text-slate-600">Loading forms…</p> : !options.forms.some(f => f.campaignId === draft.campaignId) && <p className="text-sm text-slate-600">No forms available for this intake. You can save the workshop and attach it later.</p>}
+          <button type="button" className="text-sm font-semibold text-blue-700 underline" onClick={() => setOptionsAttempt(n => n + 1)}>Refresh form list</button>
+        </section>}
         <div className="flex gap-3">
           <button className={buttonClass} disabled={busy}>
-            {busy ? "Saving…" : editing ? "Save workshop" : "Create workshop"}
+            {busy ? "Saving…" : editing ? "Save workshop" : selectedForms.length ? "Create & show on selected forms" : "Save workshop only"}
           </button>
+          {!editing && selectedForms.length > 0 && <button type="submit" value="only" formNoValidate className="rounded-lg border px-3 py-2 text-sm">Save without attaching</button>}
           {onCancel && (
             <button
               type="button"

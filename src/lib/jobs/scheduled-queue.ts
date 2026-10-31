@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { transaction } from "../data/repository";
-import { enqueue, processOutbox } from "./outbox";
-import { workshopMessage } from "../workshops/notifications";
+import { processOutbox } from "./outbox";
+import { queueWorkshopAutomatic } from "../workshops/notifications";
 import { AppError } from "../errors/app-error";
 import { recordEvent } from "../observability/logger";
 
@@ -19,7 +19,7 @@ export async function runScheduledQueue() {
                 if (hours > days * 24 || hours <= (days - 1) * 24) continue;
                 for (const booking of db.workshopBookings.filter(b => b.workshop_id === workshop.id && b.status === "confirmed")) {
                     const student = db.students.find(s => s.id === booking.student_id);
-                    if (student) enqueue(db, "email", `reminder:${booking.id}:${days}:${workshop.start_time}`, workshopMessage(db, booking, "scheduled", days));
+                    if (student) queueWorkshopAutomatic(db, booking, "scheduled", days);
                 }
             }
         }

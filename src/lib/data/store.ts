@@ -103,6 +103,7 @@ export interface Application {
 }
 
 export interface Workshop {
+  explicit_form_attachment?: boolean;
   id: string;
   campaign_id: string;
   title: string;
@@ -122,7 +123,7 @@ export interface Workshop {
   details_updated_at?: string;
   confirmation_enabled?: boolean;
   reminder_template?: "workshop_reminder" | "workshop_update";
-  confirmation_template?: "workshop_booking" | "workshop_update";
+  confirmation_template?: "workshop_booking" | "workshop_update" | `custom:${string}`;
   google_sheets_config?: { enabled: boolean; sheet_id: string; sheet_name: string; auto_sync: boolean; version: string; updated_at: string };
 }
 
@@ -368,6 +369,7 @@ export interface WorkshopFormConfig {
   help_text?: string;
   empty_message?: string;
   show_remaining?: boolean;
+  send_form_receipt?: boolean;
 }
 
 export interface FormSubmission {
@@ -383,7 +385,7 @@ export interface FormSubmission {
   registration_id?: string;
   application_id?: string;
   workshop_id?: string;
-  workshop_snapshot?: { title: string; start_time: string; venue: string };
+  workshop_snapshot?: import("../workshops/confirmation").WorkshopConfirmation;
   external_id?: string;
   form_version?: string;
   field_labels?: Record<string, string>;
@@ -391,6 +393,8 @@ export interface FormSubmission {
 }
 
 export interface CustomEmailTemplate {
+  purpose?: "general" | "workshop";
+  action_label?: string;
   id: string;
   title: string;
   form_id?: string;
