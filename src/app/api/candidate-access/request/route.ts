@@ -26,7 +26,7 @@ const schema = z
   })
   .strict();
 const generic =
-  "If these details match a registration, a secure link will be emailed to the registered address. Check your inbox and spam folder. Delivery may wait for the sending allowance.";
+  "If these details match a record, a secure link will be emailed to its registered address. Check your inbox and spam folder. Delivery may wait for the sending allowance.";
 export const POST = route(
   async (req) => {
     const parsed = schema.safeParse(await req.json());
@@ -45,9 +45,13 @@ export const POST = route(
         : "direct";
     if (!accessBucket(db, "access-request-ip", ip, 100, 15 * 60000))
       return NextResponse.json({ success: true, message: generic });
+    const targetForm = formSlug ? findPublicForm(db, formSlug) : undefined;
+    const application = targetForm?.type === "workshop_rsvp" && purpose === "apply"
+      ? db.applications.find((item) => item.application_no.toUpperCase() === reference)
+      : undefined;
     const registration = db.registrations.find(
       (registration) =>
-        registration.reference_no.toUpperCase() === reference &&
+        (registration.reference_no.toUpperCase() === reference || registration.id === application?.registration_id) &&
         registration.status !== "cancelled",
     );
     const student =
@@ -57,7 +61,6 @@ export const POST = route(
           student.id === registration.student_id &&
           student.email.trim().toLowerCase() === email,
       );
-    const targetForm = formSlug ? findPublicForm(db, formSlug) : undefined;
     const form =
       targetForm?.is_active &&
       ["application", "workshop_rsvp"].includes(targetForm.type) &&

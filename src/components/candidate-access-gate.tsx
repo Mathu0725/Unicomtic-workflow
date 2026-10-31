@@ -9,14 +9,14 @@ export default function CandidateAccessGate({
   purpose = "status",
   formSlug,
   onVerified,
-  optional = false,
+  workshop = false,
 }: {
   children: React.ReactNode;
   reference?: string;
   purpose?: "status" | "apply";
   formSlug?: string;
   onVerified?: (reference: string) => void;
-  optional?: boolean;
+  workshop?: boolean;
 }) {
   const [checking, setChecking] = useState(true),
     [verified, setVerified] = useState(false),
@@ -24,13 +24,12 @@ export default function CandidateAccessGate({
     [email, setEmail] = useState(""),
     [busy, setBusy] = useState(false),
     [message, setMessage] = useState(""),
-    [error, setError] = useState(""),
-    [skipped, setSkipped] = useState(false);
+    [error, setError] = useState("");
   useEffect(() => {
     const controller = new AbortController();
     setChecking(true);
     setRef(reference);
-    api("/api/candidate-access/session", undefined, "GET", controller.signal)
+    api(`/api/candidate-access/session${formSlug ? `?formSlug=${encodeURIComponent(formSlug)}` : ""}`, undefined, "GET", controller.signal)
       .then((data) => {
         if (controller.signal.aborted) return;
         const valid =
@@ -46,7 +45,7 @@ export default function CandidateAccessGate({
         if (!controller.signal.aborted) setChecking(false);
       });
     return () => controller.abort();
-  }, [reference]);
+  }, [reference, formSlug]);
   const request = async (event: React.FormEvent) => {
     event.preventDefault();
     if (busy) return;
@@ -73,27 +72,30 @@ export default function CandidateAccessGate({
       setBusy(false);
     }
   };
-  const panel = (
+  if (checking)
+    return <p role="status" className="p-6 text-center text-sm text-slate-500">Checking secure access…</p>;
+  if (verified) return <>{children}</>;
+  return (
     <section className="mx-auto my-8 max-w-lg rounded-2xl border border-slate-200 bg-white p-6 shadow-sm space-y-4">
       <h2 className="text-xl font-bold text-slate-900">
-        {optional ? "Secure email link (optional)" : "Continue with a secure email link"}
+        {workshop ? "Verify your workshop access" : "Continue with a secure email link"}
       </h2>
       <p className="text-sm leading-relaxed text-slate-600">
-        {optional
-          ? "Already registered? You can verify your email to continue with your record. You can also fill this workshop form directly below."
+        {workshop
+          ? "Enter the application or registration reference and the email address used for that record. Open the link sent to your inbox to continue to the workshop form."
           : "Enter your registration reference and the email address used to register. Open the private link in that inbox to continue. Contact admissions if your email needs correcting."}
       </p>
       <Notice error>{error}</Notice>
       <Notice>{message}</Notice>
       <form onSubmit={request} className="space-y-4">
         <label className="block text-sm font-semibold">
-          Registration reference
+          {workshop ? "Application or registration reference" : "Registration reference"}
           <input
             required
             maxLength={100}
             autoComplete="off"
             className={`${inputClass} mt-1`}
-            placeholder="REG-…"
+            placeholder={workshop ? "APP-… or REG-…" : "REG-…"}
             value={ref}
             onChange={(event) => setRef(event.target.value)}
           />
@@ -114,22 +116,9 @@ export default function CandidateAccessGate({
           {busy ? "Requesting…" : "Email my secure link"}
         </button>
       </form>
-      {optional && (
-        <button type="button" onClick={() => setSkipped(true)} className="w-full rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-800 hover:bg-blue-100">
-          Hide this option and continue
-        </button>
-      )}
       <p className="text-xs text-slate-500">
         Links expire 30 minutes after dispatch. Verified access lasts one hour.
       </p>
     </section>
   );
-  if (optional) return <>{!checking && !verified && !skipped && panel}{children}</>;
-  if (checking)
-    return (
-      <p role="status" className="p-6 text-center text-sm text-slate-500">
-        Checking secure access…
-      </p>
-    );
-  return verified ? <>{children}</> : panel;
 }

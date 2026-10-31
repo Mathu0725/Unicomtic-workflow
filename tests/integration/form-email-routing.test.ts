@@ -13,14 +13,19 @@ import {
   POST as saveRouting,
 } from "../../src/app/api/admin/email/routing/route";
 import { POST as requestAccess } from "../../src/app/api/candidate-access/request/route";
+import { POST as exchangeAccess } from "../../src/app/api/candidate-access/exchange/route";
+import { GET as accessSession } from "../../src/app/api/candidate-access/session/route";
 import { PATCH as updateForm } from "../../src/app/api/admin/forms/[id]/route";
 import {
   canonicalStudent,
+  applicationFor,
   registrationFor,
   submitCustomForm,
 } from "../../src/lib/admissions/service";
 import {
   candidateSession,
+  candidateLink,
+  CANDIDATE_COOKIE,
   secureCandidateEmail,
 } from "../../src/lib/security/candidate-access";
 import { SESSION_COOKIE, signSession } from "../../src/lib/security/session";
@@ -180,7 +185,7 @@ it("lets a previously registered candidate submit an open application without an
   expect((await application()).status).toBe(200);
   expect((await readDatabase()).registrations).toHaveLength(1);
 });
-it("books a workshop RSVP without requiring the optional email link", async () => {
+it("opens a workshop form only after an emailed application reference is verified", async () => {
   await transaction((db) => {
     const form = db.customForms[1];
     form.type = "workshop_rsvp";
@@ -194,8 +199,39 @@ it("books a workshop RSVP without requiring the optional email link", async () =
     });
   });
   const form = await current();
-  const response = await submit(
+  const attempt = () => submit(
     req(`/api/forms/${form.slug}`, { data: person(1), workshopId: "ws-1", expectedFormVersion: form.updated_at }),
+    { params: { slug: form.slug } },
+  );
+  expect((await attempt()).status).toBe(401);
+  let applicationReference = "";
+  await transaction((db) => {
+    const student = canonicalStudent(person(1));
+    const registration = registrationFor(student);
+    applicationReference = applicationFor(student, registration, {}).application_no;
+  });
+  const beforeLink = await readDatabase();
+  const statusToken = new URLSearchParams(new URL(candidateLink(beforeLink.registrations[0], beforeLink.students[0], "status")).hash.slice(1)).get("token")!;
+  const statusCookie = `${CANDIDATE_COOKIE}=${candidateSession(beforeLink, statusToken).cookie}`;
+  expect((await accessSession(req(`/api/candidate-access/session?formSlug=${form.slug}`, undefined, statusCookie), undefined).then(response => response.json())).verified).toBe(false);
+  expect((await submit(req(`/api/forms/${form.slug}`, { data: person(1), workshopId: "ws-1" }, statusCookie), { params: { slug: form.slug } })).status).toBe(403);
+  const requested = await requestAccess(req("/api/candidate-access/request", {
+    reference: applicationReference, email: person(1).email, purpose: "apply", formSlug: form.slug,
+  }), undefined);
+  expect(requested.status).toBe(200);
+  const dbWithLink = await readDatabase();
+  const job = dbWithLink.outbox.find((item) => item.payload.candidateAccess);
+  expect(job?.payload.candidateAccess.destination).toBe(`/form/${form.slug}`);
+  const rendered = secureCandidateEmail(dbWithLink, job!.payload);
+  const link = new URL(rendered.html.match(/href="([^"]+)"/)![1]);
+  const token = new URLSearchParams(link.hash.slice(1)).get("token")!;
+  const exchanged = await exchangeAccess(req("/api/candidate-access/exchange", { token }), undefined);
+  expect(exchanged.status).toBe(200);
+  expect((await exchanged.json()).redirectTo).toBe(`/form/${form.slug}`);
+  const cookie = exchanged.headers.get("set-cookie")!.split(";")[0];
+  expect((await accessSession(req(`/api/candidate-access/session?formSlug=${form.slug}`, undefined, cookie), undefined).then(response => response.json())).verified).toBe(true);
+  const response = await submit(
+    req(`/api/forms/${form.slug}`, { data: person(1), workshopId: "ws-1", expectedFormVersion: form.updated_at }, cookie),
     { params: { slug: form.slug } },
   );
   expect(response.status).toBe(200);

@@ -12,7 +12,7 @@ import {
 } from "@/lib/forms/messages";
 import { cleanRichText } from "@/lib/forms/rich-text";
 import { formAvailabilityProblem } from "@/lib/forms/field-rules";
-import { formRequiresCandidateAccess } from "@/lib/forms/access";
+import { candidateSessionAllowsForm, formRequiresCandidateAccess } from "@/lib/forms/access";
 export const dynamic = "force-dynamic";
 export const GET = route(
   async (
@@ -152,9 +152,9 @@ export const POST = route(
         const campaign =
           form.campaign_id ||
           db.campaigns.find((campaign) => campaign.is_active)?.id;
-        if (campaign !== access.registration.campaign_id)
+        if (campaign !== access.registration.campaign_id || !candidateSessionAllowsForm(form, access.claims))
           throw new RequestError(
-            "This form belongs to a different intake.",
+            "Open the secure link sent for this form to continue.",
             403,
           );
         return access.registration.id;

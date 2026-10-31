@@ -619,11 +619,7 @@ export default function PublicCustomFormPage() {
     </div>
   );
   return formRequiresCandidateAccess(form) ? (
-    <CandidateAccessGate purpose="apply" formSlug={slug}>
-      {content}
-    </CandidateAccessGate>
-  ) : form.type === "workshop_rsvp" ? (
-    <CandidateAccessGate purpose="apply" formSlug={slug} optional>
+    <CandidateAccessGate purpose="apply" formSlug={slug} workshop={form.type === "workshop_rsvp"}>
       {content}
     </CandidateAccessGate>
   ) : (
