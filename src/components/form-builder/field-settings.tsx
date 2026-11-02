@@ -84,6 +84,33 @@ export default function FieldSettings({
         />
       </SettingLabel>
       {field.type !== "section" && (
+        <div className="space-y-3">
+          <SettingLabel label="Question image path (optional)">
+            <input
+              className={inputClass}
+              value={field.imageUrl || ""}
+              onChange={(event) =>
+                onChange({ imageUrl: event.target.value || undefined }, "imageUrl")
+              }
+              placeholder="/forms/question-image.png"
+            />
+          </SettingLabel>
+          {field.imageUrl && (
+            <SettingLabel label="Image description for screen readers">
+              <input
+                className={inputClass}
+                maxLength={300}
+                value={field.imageAlt || ""}
+                onChange={(event) =>
+                  onChange({ imageAlt: event.target.value }, "imageAlt")
+                }
+                placeholder="Describe the image and its answer choices"
+              />
+            </SettingLabel>
+          )}
+        </div>
+      )}
+      {field.type !== "section" && (
         <Toggle
           label="Required answer"
           checked={field.required}

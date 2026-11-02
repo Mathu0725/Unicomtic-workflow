@@ -13,6 +13,7 @@ import type { NotificationTemplateId, SavedEmailTemplate } from "../email/templa
 import type { FormMessageDisplay, FormMessages } from "../forms/messages";
 import type { RichTextNode } from "../forms/rich-text";
 import type { FormEditorDraft } from "../forms/editor";
+import sample05Fields from "../forms/sample-05-fields.json";
 
 export interface Campaign {
   id: string;
@@ -280,6 +281,8 @@ export interface FormField {
   label: string;
   placeholder?: string;
   helpText?: string;
+  imageUrl?: string;
+  imageAlt?: string;
   required: boolean;
   options?: string[]; // for select, radio, checkbox
   defaultValue?: any;
@@ -1362,6 +1365,7 @@ export class DatabaseStore {
           placeholder: "Enter minimum number of lines / கோடுகளின் எண்ணிக்கை",
           required: false,
         },
+        ...(sample05Fields as FormField[]),
       ],
       google_form_config: {
         enabled: true,

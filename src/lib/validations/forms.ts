@@ -53,6 +53,8 @@ const fieldSchema = z.object({
   required: z.boolean(),
   placeholder: z.string().max(2000).optional(),
   helpText: z.string().max(4000).optional(),
+  imageUrl: z.string().max(500).regex(/^\/[a-zA-Z0-9/_-]+\.(?:png|jpe?g|webp)$/).optional(),
+  imageAlt: z.string().trim().max(300).optional(),
   options: z.array(z.string().max(1000)).max(200).optional(),
   defaultValue: z
     .union([

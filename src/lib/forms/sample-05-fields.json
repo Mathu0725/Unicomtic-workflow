@@ -1,0 +1,46 @@
+[
+  {
+    "id": "sample05Section",
+    "type": "section",
+    "label": "Sample 05 — Aptitude Questions / திறனறி வினாக்கள்",
+    "helpText": "Choose one answer for each question. ஒவ்வொரு கேள்விக்கும் ஒரு விடையைத் தேர்ந்தெடுக்கவும்.",
+    "required": false
+  },
+  {
+    "id": "sample05Series",
+    "type": "radio",
+    "label": "Sample 05 · 1. Look at this series: 544, 509, 474, 439, … What number should come next? 544, 509, 474, 439, … அடுத்து வர வேண்டிய எண் எது?",
+    "options": ["A. 404", "B. 414", "C. 420", "D. 445"],
+    "required": true
+  },
+  {
+    "id": "sample05TrainSpeed",
+    "type": "radio",
+    "label": "Sample 05 · 2. A train overtakes two persons walking along a railway track. The first one walks at 4.5 km/hr. The other one walks at 5.4 km/hr. The train needs 8.4 and 8.5 seconds respectively to overtake them. What is the speed of the train if both the persons are walking in the same direction as the train? ஒரு ரயில், இருப்புப்பாதையில் நடந்து செல்லும் இருவரை முந்திச் செல்கிறது. முதல் நபர் மணிக்கு 4.5 கி.மீ வேகத்திலும், மற்றொருவர் மணிக்கு 5.4 கி.மீ வேகத்திலும் நடக்கிறார்கள். அவர்களை முந்திச் செல்ல ரயிலுக்கு முறையே 8.4 மற்றும் 8.5 விநாடிகள் தேவைப்படுகின்றன. இருவரும் ரயில் செல்லும் அதே திசையில் நடந்து செல்கிறார்கள் எனில், ரயிலின் வேகம் என்ன?",
+    "options": ["A. 66 km/hr | மணிக்கு 66 கி.மீ", "B. 72 km/hr | மணிக்கு 72 கி.மீ", "C. 78 km/hr | மணிக்கு 78 கி.மீ", "D. 81 km/hr | மணிக்கு 81 கி.மீ"],
+    "required": true
+  },
+  {
+    "id": "sample05MirrorImage",
+    "type": "radio",
+    "label": "Sample 05 · 3. Choose the alternative which closely resembles the mirror image of the given combination. கொடுக்கப்பட்டுள்ள சேர்க்கையின் கண்ணாடிப் பிம்பத்தை மிக நெருக்கமாக ஒத்திருக்கும் விடையைத் தேர்ந்தெடுக்கவும்.",
+    "imageUrl": "/forms/sample-05-mirror.png",
+    "imageAlt": "Mirror-image question showing 1965 INDOPAK and four numbered picture choices, 1 to 4.",
+    "options": ["A. (1)", "B. (2)", "C. (3)", "D. (4)"],
+    "required": true
+  },
+  {
+    "id": "sample05Average",
+    "type": "radio",
+    "label": "Sample 05 · 4. Average of five numbers is 20. If each number is multiplied by 2, what will be the new average? ஐந்து எண்களின் சராசரி 20. ஒவ்வொரு எண்ணையும் 2 ஆல் பெருக்கினால், புதிய சராசரி எவ்வளவு?",
+    "options": ["A. 30", "B. 40", "C. 50", "D. 60"],
+    "required": true
+  },
+  {
+    "id": "sample05CircularSeating",
+    "type": "radio",
+    "label": "Sample 05 · 5. Eight boys A, B, C, D, E, F, G, and H are seated around a circular table. A and B are opposite to each other. F is neither next to H nor next to G. H is to the immediate left of B and opposite of G. D is to the immediate right of B. Who is to the immediate right of A? A, B, C, D, E, F, G மற்றும் H ஆகிய எட்டு சிறுவர்கள் ஒரு வட்ட மேசையைச் சுற்றி அமர்ந்துள்ளனர். A மற்றும் B ஒருவருக்கொருவர் நேர் எதிரே உள்ளனர். F என்பவர் H-க்கு அருகிலும் இல்லை, G-க்கு அருகிலும் இல்லை. H என்பவர் B-யின் உடனடி இடதுபுறத்தில் உள்ளார்; மேலும் G-க்கு நேர் எதிரே உள்ளார். D என்பவர் B-யின் உடனடி வலதுபுறத்தில் உள்ளார். A-யின் உடனடி வலதுபுறத்தில் இருப்பவர் யார்?",
+    "options": ["A. G", "B. B", "C. F", "D. C or E | C அல்லது E", "E. A, B, C"],
+    "required": true
+  }
+]

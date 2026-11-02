@@ -36,6 +36,15 @@ export default function FormQuestion({
       undefined,
     className: classes,
   };
+  const illustration = field.imageUrl ? (
+    <img
+      src={field.imageUrl}
+      alt={field.imageAlt || `${field.label} illustration`}
+      className="h-auto max-w-full rounded-lg border border-slate-200 bg-white"
+      loading="lazy"
+      decoding="async"
+    />
+  ) : null;
   if (field.type === "section")
     return (
       <div className="border-b border-slate-200 pb-3 pt-3">
@@ -62,6 +71,7 @@ export default function FormQuestion({
           )}
         </label>
       )}
+      {!["radio", "checkbox"].includes(field.type) && illustration}
       {field.type === "textarea" ? (
         <textarea
           {...common}
@@ -98,6 +108,7 @@ export default function FormQuestion({
             {field.label}
             {field.required && <span className="ml-1 text-red-600">*</span>}
           </legend>
+          {illustration && <div className="mb-3">{illustration}</div>}
           <div className="space-y-2">
             {(field.options || []).map((option) => (
               <label
