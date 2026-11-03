@@ -68,7 +68,7 @@ export function route<T>(handler: (req: NextRequest, context: T) => Promise<Resp
       // Dynamic route IDs/slugs and query strings are excluded from routine logs.
       const routeName = req.nextUrl.pathname.replace(/\/(forms)\/[^/]+/, "/$1/[id]");
       return requestContext.run({ requestId, route: routeName }, async () => {
-        const finish = async (response: Response) => { recordEvent("REQUEST_COMPLETED", { status: response.status, durationMs: Date.now() - started }); return normalizeResponse(response, requestId); };
+        const finish = async (response: Response) => { recordEvent("REQUEST_COMPLETED", { status: response.status, durationMs: Date.now() - started, databaseReadMs: requestContext.getStore()?.databaseReadMs }); return normalizeResponse(response, requestId); };
         try {
             if (process.env.NODE_ENV === "production" && ((process.env.APP_SECRET?.length || 0) < 32 || !process.env.ADMIN_EMAIL || !process.env.ADMIN_PASSWORD) && !req.nextUrl.pathname.startsWith("/api/health")) throw new AppError("SERVER_NOT_CONFIGURED", "Admissions security configuration needs administrator attention.", 503, {}, false, "contact_admissions");
             if (admin) {
@@ -141,3 +141,4 @@ export function route<T>(handler: (req: NextRequest, context: T) => Promise<Resp
       });
     };
 }
+
