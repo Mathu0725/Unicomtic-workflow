@@ -7,6 +7,19 @@ import { transaction, readDatabase } from "../../src/lib/data/repository";
 import { SESSION_COOKIE, signSession } from "../../src/lib/security/session";
 import { previewToken } from "../../src/lib/omr/commit-validation";
 import { POST as saveSettings } from "../../src/app/api/admin/settings/route";
+import { GET as publicSettings } from "../../src/app/api/settings/route";
+
+it("persists editable email dates and HTTPS form links without exposing them in public settings", async () => {
+    const current = (await readDatabase()).settings;
+    const emailWorkflow = { interviewBookingUrl: "https://forms.example.com/interview", courseStartDate: "1 April 2027", enrollmentUploadUrl: "https://forms.example.com/enroll" };
+    expect((await saveSettings(req("/api/admin/settings", { ...current, emailWorkflow }), undefined)).status).toBe(200);
+    expect((await readDatabase()).settings.emailWorkflow).toEqual(emailWorkflow);
+    const response = await publicSettings(new NextRequest("http://localhost/api/settings"), undefined);
+    expect((await response.json()).settings.emailWorkflow).toBeUndefined();
+    const latest = (await readDatabase()).settings;
+    expect((await saveSettings(req("/api/admin/settings", { ...latest, emailWorkflow: { interviewBookingUrl: "javascript:alert(1)" } }), undefined)).status).toBe(400);
+    expect((await readDatabase()).settings.emailWorkflow).toEqual(emailWorkflow);
+});
 import { POST as commitMarks } from "../../src/app/api/admin/marks-import/commit/route";
 import { PATCH as updateApplication } from "../../src/app/api/admin/applications/route";
 import { POST as queueExports } from "../../src/app/api/admin/sheets-sync/route";

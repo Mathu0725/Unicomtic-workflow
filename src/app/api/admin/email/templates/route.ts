@@ -1,3 +1,5 @@
+import { correctedTemplateCopy } from "@/lib/email/corrected-template-copy";
+import { emailAttachmentsSchema, EMAIL_REQUEST_LIMIT } from "@/lib/email/attachments";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { route, RequestError } from "@/lib/http";
@@ -41,6 +43,7 @@ const schema = z.discriminatedUnion("kind", [
   z
     .object({
       kind: z.literal("system"),
+      attachments: emailAttachmentsSchema.optional(),
       id: z.enum(notificationTemplateIds),
       expectedVersion: z.number().int().min(0),
       ...content,
@@ -62,6 +65,7 @@ export const GET = route(async () => {
   const entries = notificationTemplates.map((definition) => ({
     ...definition,
     ...savedTemplate(db, definition.id),
+    documentCopy: Boolean(correctedTemplateCopy[definition.id]),
     key: `system:${definition.id}`,
     kind: "system",
     limits: templateContentLimits(definition.id),
@@ -170,6 +174,7 @@ export const POST = route(
       db.emailTemplates[input.id as NotificationTemplateId] = {
         subject: input.subject,
         body: input.body,
+        attachments: input.attachments ?? db.emailTemplates[input.id]?.attachments ?? [],
         ...(definition.actionLabel !== undefined
           ? { actionLabel: input.actionLabel || definition.actionLabel }
           : {}),
@@ -222,5 +227,5 @@ export const POST = route(
     });
   },
   true,
-  { bodyLimit: 65536 },
+  { bodyLimit: EMAIL_REQUEST_LIMIT },
 );

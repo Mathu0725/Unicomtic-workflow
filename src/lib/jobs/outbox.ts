@@ -1,3 +1,5 @@
+import { emailAttachmentsSchema } from "../email/attachments";
+import { ProviderError } from "../errors/provider-error";
 import { createHash, randomUUID } from "node:crypto";
 import { DatabaseStore, databaseContext, getDb } from "../data/store";
 import { readDatabase, transaction } from "../data/repository";
@@ -26,7 +28,14 @@ export function enqueue(db: DatabaseStore, type: OutboxJob["type"], key: string,
         job.email_account_id = payload.smtpAccountId || defaultEmailAccountId(db);
         job.fallback_email_account_id = payload.fallbackSmtpAccountId || undefined;
         job.initiated_by = payload.initiatedBy;
-        job.payload = { ...payload, html: sanitizeEmailHtml(String(payload.html || "")) };
+        const files = emailAttachmentsSchema.parse(payload.attachments || []);
+        const attachmentIds = files.map(file => {
+            const id = createHash("sha256").update(JSON.stringify(file)).digest("hex");
+            (db.emailAttachmentFiles ||= {})[id] = file;
+            return id;
+        });
+        const { attachments: _attachments, ...savedPayload } = payload;
+        job.payload = { ...savedPayload, ...(attachmentIds.length ? { attachmentIds } : {}), html: sanitizeEmailHtml(String(payload.html || "")) };
     }
     const blocker = db.outbox.find(j => j.status === "blocked" && !["CANDIDATE_EXPORT_CHANGED","SHEET_DESTINATION_CHANGED","WORKSHOP_BOOKING_MISSING"].includes(j.error_code || "") && (type === "sheet" ? j.type === "sheet" && (j.payload.sheetId === payload.sheetId && j.payload.sheetName === payload.sheetName || ["GOOGLE_AUTH_REVOKED", "GOOGLE_NOT_CONNECTED", "GOOGLE_NOT_CONFIGURED", "GOOGLE_TOKEN_UNREADABLE"].includes(j.error_code || "")) : j.type === "email" && (j.email_account_id || defaultEmailAccountId(db)) === job.email_account_id && !job.fallback_email_account_id && j.error_code?.startsWith(job.email_account_id === GMAIL_ACCOUNT ? "GOOGLE_" : "SMTP_")));
     if (blocker) { job.status = "blocked"; job.error = blocker.error; job.error_code = blocker.error_code; job.repair_action = blocker.repair_action; }
@@ -179,8 +188,14 @@ export async function processOutbox(limit = 120, timeBudgetMs = 45000, onlyJobId
                 const currentEmail = student?.email || response?.data?.email;
                 if (!response || String(currentEmail || "").trim().toLowerCase() !== String(job.payload.to).trim().toLowerCase()) return { success: false, error: "The form response or registered email changed after scheduling. Review recipients and create a new campaign.", errorCode: "FORM_CAMPAIGN_CONTACT_CHANGED", failureKind: "permanent" as const };
             }
-            if (job.type === "email")
-                return sendEmail({ ...secureCandidateEmail(db, job.payload), smtpAccountId: job.email_account_id, messageId: `<${job.id}@unicom-tic.local>` } as SendEmailPayload);
+            if (job.type === "email") {
+                const attachments = (job.payload.attachmentIds || []).map((id: string) => {
+                    const file = db.emailAttachmentFiles?.[id];
+                    if (!file) throw new ProviderError("EMAIL_ATTACHMENT_MISSING", "An email attachment is missing. Review the saved message before retrying.", "permanent");
+                    return file;
+                });
+                return sendEmail({ ...secureCandidateEmail(db, job.payload), ...(attachments.length ? { attachments } : {}), smtpAccountId: job.email_account_id, messageId: `<${job.id}@unicom-tic.local>` } as SendEmailPayload);
+            }
             const rows = jobs.flatMap(item => item.payload.rows);
             const res = job.payload.workshopId ? await googleSheetsService.syncWorkshopBookings(job.payload.sheetId,job.payload.sheetName,job.payload.workshopId,rows) : await googleSheetsService.syncRecords(job.payload.sheetId, "registrations", rows, job.payload.sheetName);
             return { success: res.success, error: res.error, provider: "google_sheets", messageId: job.payload.sheetId, uncertain: false, retryAfterMs: res.retryAfterMs, errorCode: res.errorCode, failureKind: res.failureKind, action: res.action };

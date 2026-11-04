@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import EmailAttachments from "@/components/email-attachments";
 import FormEmailRouting from "@/components/form-email-routing";
 import { Mail, RefreshCw, Save, Search, Undo2 } from "lucide-react";
 import {
@@ -20,6 +21,7 @@ import {
 
 type Entry = EmailTemplateContent & {
   key: string;
+  documentCopy?: boolean;
   kind: "system" | "form";
   id: string;
   title: string;
@@ -37,6 +39,7 @@ type Entry = EmailTemplateContent & {
   builderUrl?: string;
 };
 const draftFor = (entry: Entry): EmailTemplateContent => ({
+  ...(entry.kind === "system" ? { attachments: entry.attachments || [] } : {}),
   subject: entry.subject,
   body: entry.body,
   ...(entry.kind === "system" && entry.actionLabel !== undefined
@@ -96,6 +99,7 @@ export default function EmailTemplatesPage() {
     return () => window.removeEventListener("beforeunload", warn);
   }, [dirty]);
   const choose = (entry: Entry) => {
+    if (busy) return;
     if (dirty) {
       setError(
         "Save your changes or choose Discard changes before switching templates.",
@@ -371,6 +375,7 @@ export default function EmailTemplatesPage() {
                         }
                       />
                     </label>
+                    {selected.kind === "system" && <EmailAttachments onReadingChange={setBusy} value={draft.attachments || []} disabled={busy} onChange={attachments => setDraft({ ...draft, attachments })} />}
                     {draft.actionLabel !== undefined && (
                       <label className="block text-sm font-semibold">
                         Automatic link label
@@ -420,6 +425,7 @@ export default function EmailTemplatesPage() {
                         disabled={busy}
                         onClick={() => {
                           setDraft({
+                            ...(selected.kind === "system" ? { attachments: draft.attachments || [] } : {}),
                             subject: selected.defaults.subject,
                             body: selected.defaults.body,
                             ...(selected.kind === "system" &&
@@ -434,7 +440,7 @@ export default function EmailTemplatesPage() {
                         className="inline-flex items-center gap-1.5 text-sm font-semibold text-slate-600"
                       >
                         <Undo2 className="h-4 w-4" />
-                        Load default
+                        {selected.documentCopy ? "Load corrected document wording" : "Load default"}
                       </button>
                       {dirty && (
                         <button

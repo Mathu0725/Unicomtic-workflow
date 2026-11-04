@@ -12,6 +12,8 @@ import SubmissionRecovery from "./submission-recovery";
 import { pendingPayload, submitRequest } from "@/lib/client/submit";
 import { readJson, responseError } from "@/lib/client/api";
 import type { CandidateStage, EmailCandidate } from "@/lib/email/candidates";
+import EmailAttachments from "./email-attachments";
+import type { EmailAttachment } from "@/lib/email/attachments";
 const endpoint = "/api/admin/email/manual";
 const identity = (candidate: EmailCandidate) =>
   `${candidate.stage}:${candidate.id}`;
@@ -34,6 +36,7 @@ export default function CandidateEmailComposer({
     [body, setBody] = useState(""),
     [templateId, setTemplateId] = useState(""),
     [accountId, setAccountId] = useState("");
+  const [attachments, setAttachments] = useState<EmailAttachment[]>([]);
   const [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [message, setMessage] = useState(""),
@@ -70,7 +73,7 @@ export default function CandidateEmailComposer({
   useEffect(() => {
     setPreview(null);
     setConfirmed(false);
-  }, [selected, direct, subject, body, accountId, templateId]);
+  }, [selected, direct, subject, body, accountId, templateId, attachments]);
   const input = () => ({
     candidates: selected.map((candidate) => ({
       stage: candidate.stage,
@@ -86,6 +89,7 @@ export default function CandidateEmailComposer({
     accountId,
     ...(templateId ? { templateId } : {}),
     clientAttemptId: attemptId,
+    attachments,
   });
   const finish = async (data: any) => {
     setBatchId(data.batchId);
@@ -407,6 +411,7 @@ export default function CandidateEmailComposer({
                 if (template) {
                   setSubject(template.subject);
                   setBody(template.body);
+                  setAttachments(template.attachments || []);
                 }
               }}
             >
@@ -463,6 +468,7 @@ export default function CandidateEmailComposer({
               placeholder="Write in English or Tamil…"
             />
           </label>
+          <EmailAttachments onReadingChange={setBusy} value={attachments} onChange={setAttachments} disabled={busy || unresolved} />
           <p className="text-xs text-slate-500">
             Plain text is safely converted to HTML. Variables:{" "}
             {choices.data?.variables
@@ -516,6 +522,7 @@ export default function CandidateEmailComposer({
             {preview.duplicateCount} duplicate address entries removed. Showing
             up to 10 personalized previews.
           </p>
+          {preview.attachments?.length > 0 && <p className="text-sm font-semibold">Attachments to every recipient: {preview.attachments.map((file: { filename: string }) => file.filename).join(", ")}</p>}
           {preview.previews.map((item: any) => (
             <details
               key={item.to}

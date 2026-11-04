@@ -7,7 +7,7 @@ function restore(url: string) {
     if (pending.has(url)) return;
     try {
         const saved = JSON.parse(sessionStorage.getItem(`admissions_retry:${url}`) || "null");
-        if (saved?.expires > Date.now() && typeof saved.body === "string" && saved.body.length <= 128 * 1024 && /^[a-f0-9]{48}$/.test(saved.key)) pending.set(url, { body: saved.body, key: saved.key, unresolved: saved.unresolved === true });
+        if (saved?.expires > Date.now() && typeof saved.body === "string" && saved.body.length <= (url === "/api/admin/email/manual" ? 3 * 1024 * 1024 : 128 * 1024) && /^[a-f0-9]{48}$/.test(saved.key)) pending.set(url, { body: saved.body, key: saved.key, unresolved: saved.unresolved === true });
     } catch { }
 }
 function persist(url: string) {

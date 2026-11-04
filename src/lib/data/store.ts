@@ -416,6 +416,7 @@ export interface CustomEmailTemplate {
 // Initial In-Memory Database
 export class DatabaseStore {
   emailTemplates: Partial<Record<NotificationTemplateId, SavedEmailTemplate>> = {};
+  emailAttachmentFiles: Record<string, import("../email/attachments").EmailAttachment> = {};
   customEmailTemplates: CustomEmailTemplate[] = [];
   candidateAccessAttempts: { key: string; count: number; expires: number }[] = [];
   documentUploads: DocumentUpload[] = [];

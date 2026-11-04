@@ -1,3 +1,4 @@
+import { EMAIL_REQUEST_LIMIT } from "@/lib/email/attachments";
 import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
 import { route, RequestError } from "@/lib/http";
@@ -129,5 +130,5 @@ export const POST = route(
     });
   },
   true,
-  { submission: true, authorize: (req) => getSession(req)!.email },
+  { bodyLimit: EMAIL_REQUEST_LIMIT, submission: true, authorize: (req) => getSession(req)!.email },
 );

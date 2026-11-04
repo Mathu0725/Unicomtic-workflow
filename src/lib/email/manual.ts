@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { emailWorkflowValues, emailWorkflowVariables } from "./workflow-settings";
+import { emailAttachmentsSchema } from "./attachments";
 import type { DatabaseStore } from "../data/store";
 import { RequestError } from "../http";
 import { candidateEmailSchema } from "../validations/email";
@@ -14,8 +16,10 @@ export const manualTemplateIds = [
   "registration_confirmation",
   "application_confirmation",
   "form_confirmation",
+  "workshop_invitation",
 ] as const;
 export const manualVariables = [
+  ...emailWorkflowVariables,
   "name",
   "email",
   "reference",
@@ -40,6 +44,7 @@ export const manualMessageSchema = z
       )
       .max(500),
     directRecipients: z.array(candidateEmailSchema).max(500),
+    attachments: emailAttachmentsSchema.default([]),
     subject: z.string().trim().min(1).max(250),
     body: z.string().trim().min(1).max(10000),
     accountId: z.string().max(128).default(""),
@@ -116,6 +121,8 @@ export function prepareManualEmail(db: DatabaseStore, raw: unknown) {
           reference: candidate.reference,
         },
         variables: {
+          ...emailWorkflowValues(db.settings),
+          utNumber: student.ut_number || candidate.reference,
           name: candidate.name,
           email: to,
           reference: candidate.reference,
@@ -135,7 +142,7 @@ export function prepareManualEmail(db: DatabaseStore, raw: unknown) {
         to,
         toName: "",
         reference: "",
-        variables: { email: to, name: "Applicant", institution },
+        variables: { ...emailWorkflowValues(db.settings), utNumber: "Applicant", email: to, name: "Applicant", institution },
       });
   }
   if (!recipients.size || recipients.size > 500)
@@ -164,6 +171,7 @@ export function prepareManualEmail(db: DatabaseStore, raw: unknown) {
       ),
       text,
       html: plainEmailHtml(text),
+      attachments: input.attachments,
     };
   });
   return {
