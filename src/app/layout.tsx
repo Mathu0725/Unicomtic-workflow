@@ -5,8 +5,8 @@ export const metadata: Metadata = {
   title: "Unicom TIC - Student Lifecycle Platform",
   description: "Official Student Registration, Application, Workshop, Exam and Selection Management Portal for Unicom TIC",
   icons: {
-    icon: "/logo.png",
-    apple: "/logo.png",
+    icon: "/admissions-icon.png",
+    apple: "/admissions-icon.png",
   },
 };
 
