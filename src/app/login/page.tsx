@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import BrandLogo from "@/components/brand-logo";
+import Image from "next/image";
 import { api, inputClass, buttonClass, panelClass, Notice } from "@/components/live-data";
 import { oauthMessage } from "@/lib/client/oauth-errors";
 export default function LoginPage() {
@@ -13,7 +13,7 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center p-6">
       <div className="w-full max-w-md space-y-5">
         <div className="text-center">
-          <BrandLogo className="mx-auto h-24 w-24" priority />
+          <Image src="/admissions-icon.png" alt="Unicom TIC logo" width={600} height={600} className="mx-auto h-24 w-24 object-contain" preload unoptimized />
           <h1 className="font-extrabold text-2xl mt-4">Admissions staff sign in</h1>
           <p className="text-sm text-slate-500 mt-2">Unicom TIC student lifecycle platform</p>
         </div>
