@@ -1,19 +1,23 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash } from "node:crypto";
 
-export const requestContext = new AsyncLocalStorage<{ requestId: string; route: string }>();
-type Event = { at: string; code: string; requestId?: string; route?: string; status?: number; durationMs?: number; jobId?: string; attempt?: number; occurrences?: number; acknowledged?: boolean; recoveredAt?: string; exceptionType?: string; fingerprint?: string };
+export const requestContext = new AsyncLocalStorage<{ requestId: string; route: string; databaseReadMs?: number }>();
+type Event = { at: string; code: string; requestId?: string; route?: string; status?: number; durationMs?: number; databaseReadMs?: number; jobId?: string; attempt?: number; occurrences?: number; acknowledged?: boolean; recoveredAt?: string; exceptionType?: string; fingerprint?: string };
 // A bounded, process-local incident window. Durable audit records remain in the database.
 const recent: Event[] = [];
 const timings: number[] = [];
 const safeCode = (value: unknown) => typeof value === "string" && /^[A-Za-z0-9_./:[\]-]{1,160}$/.test(value) ? value : undefined;
 export function recordEvent(code: string, meta: Partial<Event> = {}) {
     const context = requestContext.getStore();
-    const event: Event = { at: new Date().toISOString(), code: safeCode(code) || "INTERNAL_ERROR", requestId: context?.requestId, route: context?.route, status: meta.status, durationMs: meta.durationMs, jobId: safeCode(meta.jobId), attempt: meta.attempt };
+    const event: Event = { at: new Date().toISOString(), code: safeCode(code) || "INTERNAL_ERROR", requestId: context?.requestId, route: context?.route, status: meta.status, durationMs: meta.durationMs, databaseReadMs: meta.databaseReadMs, jobId: safeCode(meta.jobId), attempt: meta.attempt };
     if (typeof event.durationMs === "number") { timings.push(event.durationMs); if (timings.length > 300) timings.shift(); }
     if (meta.exceptionType && ["Error", "TypeError", "SyntaxError", "RangeError", "ReferenceError", "AbortError", "TimeoutError"].includes(meta.exceptionType)) event.exceptionType = meta.exceptionType;
     if (meta.fingerprint && /^[a-f0-9]{64}$/.test(meta.fingerprint)) event.fingerprint = meta.fingerprint;
     if (code === "REQUEST_COMPLETED" && (meta.status || 0) < 400) recent.filter(item => !item.jobId && item.route === context?.route).forEach(item => { item.recoveredAt = new Date().toISOString(); });
+    // Sample only the public campaigns endpoint to compare end-to-end and storage latency without logging request data.
+    if (code === "REQUEST_COMPLETED" && context?.route === "/api/campaigns" && Math.random() < 0.05) {
+        console.info(JSON.stringify({ event: "capacity_sample", route: event.route, status: event.status, durationMs: event.durationMs, databaseReadMs: event.databaseReadMs }));
+    }
     // Never accept arbitrary objects, error messages, query strings or request bodies.
     if (code !== "REQUEST_COMPLETED" && ((event.status || 0) >= 400 || event.jobId)) {
         recent.push(event);
@@ -41,3 +45,4 @@ export function errorMetadata(error: unknown): Partial<Event> {
     const value = error instanceof Error ? error : undefined;
     return { exceptionType: value?.name || "Error", fingerprint: createHash("sha256").update(value?.stack || value?.name || "unknown").digest("hex") };
 }
+
