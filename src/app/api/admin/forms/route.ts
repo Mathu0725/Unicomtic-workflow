@@ -12,12 +12,15 @@ import { audit } from "@/lib/admissions/service";
 import { uniqueFormSlug } from "@/lib/forms/public-links";
 export const dynamic = "force-dynamic";
 export const GET = route(
-  async () =>
-    NextResponse.json({
+  async () => {
+    const db = getDb();
+    return NextResponse.json({
       success: true,
-      forms: getDb().customForms,
-      total: getDb().customForms.length,
-    }),
+      forms: db.customForms,
+      intakes: db.campaigns,
+      total: db.customForms.length,
+    });
+  },
   true,
 );
 export const POST = route(async (req) => {
@@ -202,3 +205,4 @@ export const POST = route(async (req) => {
       "Form created. Open Builder to configure questions and workshop choices.",
   });
 }, true);
+
