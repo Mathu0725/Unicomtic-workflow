@@ -168,6 +168,35 @@ it("previews unsaved question changes without publishing or submitting", async (
     mocks.api.mock.calls.some(([, body]) => body?.action === "publish"),
   ).toBe(false);
 });
+it("previews the configured thank-you screen with separated English and Tamil copy", async () => {
+  await open();
+  fireEvent.click(
+    within(screen.getByRole("navigation", { name: "Form editor" })).getByRole(
+      "button",
+      { name: "Settings" },
+    ),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "After submission" }));
+  fireEvent.change(screen.getByRole("textbox", { name: /Success message/ }), {
+    target: {
+      value:
+        "Your application has been received. விண்ணப்பம் வெற்றிகரமாக பெறப்பட்டது.",
+    },
+  });
+  fireEvent.click(
+    screen.getByRole("button", { name: "Preview thank-you screen" }),
+  );
+  const preview = screen.getByRole("dialog", {
+    name: "Thank-you screen preview",
+  });
+  expect(
+    within(preview).getByText("Your application has been received."),
+  ).toBeTruthy();
+  expect(
+    within(preview).getByText("விண்ணப்பம் வெற்றிகரமாக பெறப்பட்டது."),
+  ).toBeTruthy();
+  expect(within(preview).getByText("APP-27-EXAMPLE")).toBeTruthy();
+});
 it("edits real rich-text structure and rejects unsafe links in the description toolbar", async () => {
   const onChange = vi.fn();
   render(
@@ -224,3 +253,4 @@ it("supports multiple checkbox answers and accessible help and validation text",
   fireEvent.click(screen.getByRole("checkbox", { name: "Web" }));
   expect(onChange).toHaveBeenLastCalledWith(["Data"]);
 });
+
