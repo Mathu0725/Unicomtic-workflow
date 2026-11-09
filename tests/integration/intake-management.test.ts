@@ -7,6 +7,7 @@ import { transaction } from "../../src/lib/data/repository";
 import { SESSION_COOKIE, signSession } from "../../src/lib/security/session";
 import { POST as createIntake, PATCH as updateIntake } from "../../src/app/api/admin/campaigns/route";
 import { POST as createForm } from "../../src/app/api/admin/forms/route";
+import { PATCH as updateForm } from "../../src/app/api/admin/forms/[id]/route";
 
 let dir: string;
 
@@ -34,7 +35,7 @@ function request(url: string, body: unknown, method = "POST") {
   });
 }
 
-it("creates a year-specific intake, links a new form, and prevents new forms after that intake closes", async () => {
+it("creates year-specific intakes, moves an existing form, and prevents new forms after that intake closes", async () => {
   const intakeResponse = await createIntake(request("/api/admin/campaigns", {
     title: "Scholarship Intake",
     academic_year: "2030",
@@ -51,13 +52,26 @@ it("creates a year-specific intake, links a new form, and prevents new forms aft
     campaignId: campaign.id,
   }), undefined);
   expect(formResponse.status).toBe(200);
-  expect((await formResponse.json()).form.campaign_id).toBe(campaign.id);
+  const { form } = await formResponse.json();
+  expect(form.campaign_id).toBe(campaign.id);
 
-  expect((await updateIntake(request("/api/admin/campaigns", { id: campaign.id, is_active: false }, "PATCH"), undefined)).status).toBe(200);
+  const nextIntakeResponse = await createIntake(request("/api/admin/campaigns", {
+    title: "Scholarship Intake",
+    academic_year: "2031",
+  }), undefined);
+  const { campaign: nextCampaign } = await nextIntakeResponse.json();
+  const moved = await updateForm(request(`/api/admin/forms/${form.id}`, {
+    campaign_id: nextCampaign.id,
+    expectedUpdatedAt: form.updated_at,
+  }, "PATCH"), { params: Promise.resolve({ id: form.id }) });
+  expect(moved.status).toBe(200);
+  expect((await moved.json()).form.campaign_id).toBe(nextCampaign.id);
+
+  expect((await updateIntake(request("/api/admin/campaigns", { id: nextCampaign.id, is_active: false }, "PATCH"), undefined)).status).toBe(200);
   const blocked = await createForm(request("/api/admin/forms", {
-    title: "Another 2030 Registration",
+    title: "Another 2031 Registration",
     type: "registration",
-    campaignId: campaign.id,
+    campaignId: nextCampaign.id,
   }), undefined);
   expect(blocked.status).toBe(400);
   expect((await blocked.json()).message).toContain("active intake");
