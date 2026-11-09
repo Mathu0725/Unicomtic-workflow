@@ -6,6 +6,7 @@ import { RequestError } from "../http";
 import { candidateEmailSchema } from "../validations/email";
 import { emailCandidates } from "./candidates";
 import { validateEmailAccount } from "./accounts";
+import { formAvailabilityProblem } from "../forms/field-rules";
 import {
   personalizeTemplate,
   plainEmailHtml,
@@ -15,6 +16,7 @@ export const manualTemplateIds = [
   "candidate_message",
   "registration_confirmation",
   "application_confirmation",
+  "application_invitation",
   "form_confirmation",
   "workshop_invitation",
 ] as const;
@@ -29,7 +31,21 @@ export const manualVariables = [
   "formTitle",
   "district",
   "phone",
+  "applicationUrl",
 ];
+
+function applicationUrlForRegistration(db: DatabaseStore, campaignId?: string) {
+  const matching = db.customForms.filter(
+    (form) =>
+      form.type === "application" &&
+      form.application_mode === "open" &&
+      form.campaign_id === campaignId &&
+      !formAvailabilityProblem(form),
+  );
+  if (matching.length !== 1) return;
+  const base = (process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").replace(/\/$/, "");
+  return `${base}/form/${matching[0].slug}`;
+}
 export const manualMessageSchema = z
   .object({
     candidates: z
@@ -106,6 +122,15 @@ export function prepareManualEmail(db: DatabaseStore, raw: unknown) {
       db.customForms.find((form) => candidate.formIds?.includes(form.id))
         ?.title ||
       (candidate.stage === "application" ? "Application" : "Registration");
+    const applicationUrl =
+      input.templateId === "application_invitation" &&
+      candidate.stage === "registration"
+        ? applicationUrlForRegistration(db, candidate.campaignId)
+        : undefined;
+    if (input.templateId === "application_invitation" && !applicationUrl)
+      throw new RequestError(
+        "This registration\'s intake needs exactly one published open application form before you can send an application invitation.",
+      );
     const to = candidate.email.trim().toLowerCase();
     if (!recipients.has(to))
       recipients.set(to, {
@@ -132,6 +157,7 @@ export function prepareManualEmail(db: DatabaseStore, raw: unknown) {
           formTitle,
           district: candidate.district,
           phone: student.phone || "",
+          ...(applicationUrl ? { applicationUrl } : {}),
         },
       });
   }
