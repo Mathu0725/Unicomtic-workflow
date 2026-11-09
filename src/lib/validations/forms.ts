@@ -213,6 +213,7 @@ export const formEditableSchema = z
     starts_at: z.string().datetime().or(z.literal("")),
     closes_at: z.string().datetime().or(z.literal("")),
     submission_limit: z.number().int().min(0).max(1000000),
+    campaign_id: z.string().trim().min(1).max(128),
   })
   .partial();
 export const formDraftSchema = formEditableSchema
@@ -238,3 +239,4 @@ export const formDraftSchema = formEditableSchema
       .optional(),
   })
   .strict();
+
