@@ -1,5 +1,6 @@
 "use client";
 import dynamic from "next/dynamic";
+import { useState } from "react";
 import WorkshopSettings from "./workshop-settings";
 import Link from "next/link";
 import type { CustomForm, Workshop } from "@/lib/data/store";
@@ -15,6 +16,7 @@ import { richTextFromPlain, richTextPlainText } from "@/lib/forms/rich-text";
 import { formSlugProblem } from "@/lib/forms/public-links";
 import FormInstructions from "@/components/form-instructions";
 import FormSubmitMessages from "@/components/form-submit-messages";
+import FormThankYou from "@/components/form-thank-you";
 import {
   buttonClass,
   inputClass,
@@ -82,6 +84,7 @@ export default function FormSettings({
   workshops: Workshop[];
   onWorkshopCreated?: (w: Workshop) => void;
 }) {
+  const [confirmationPreviewOpen, setConfirmationPreviewOpen] = useState(false);
   const messages = resolveFormMessages(values.messages),
     display = resolveFormMessageDisplay(values.message_display);
   const localTime = (value?: string) => {
@@ -202,7 +205,7 @@ export default function FormSettings({
           </details>
         ))}
         <SettingsCard title="Bottom messages preview">
-          <div className="rounded-lg bg-[#4d4d4d] p-3 text-center text-sm font-bold text-white">
+          <div className="rounded-lg bg-[#142b49] p-3 text-center text-sm font-bold text-white">
             {messages.submitButtonLabel}
           </div>
           <FormSubmitMessages
@@ -227,39 +230,83 @@ export default function FormSettings({
   }
   if (section === "confirmation")
     return (
-      <SettingsCard
-        title="After submission"
-        description="Shown after the database confirms the response. The unique reference number appears automatically."
-      >
-        <SettingLabel label="Success message">
-          <textarea
-            rows={5}
-            maxLength={4000}
-            value={values.confirmation_message}
-            onChange={(event) =>
-              onChange(
-                { confirmation_message: event.target.value },
-                "confirmation",
-              )
-            }
-            className={inputClass}
-          />
-        </SettingLabel>
-        <SettingLabel
-          label="Continue button URL"
-          hint="Optional. Applicants can follow this link after saving their reference number."
+      <>
+        <SettingsCard
+          title="After submission"
+          description="Shown after the database confirms the response. The unique reference number appears automatically."
         >
-          <input
-            type="url"
-            value={values.redirect_url || ""}
-            onChange={(event) =>
-              onChange({ redirect_url: event.target.value }, "redirect")
-            }
-            className={inputClass}
-            placeholder="https://example.com"
-          />
-        </SettingLabel>
-      </SettingsCard>
+          <SettingLabel
+            label="Success message"
+            hint="Use a blank line between English and Tamil to show each message as a clear separate paragraph."
+          >
+            <textarea
+              rows={5}
+              maxLength={4000}
+              value={values.confirmation_message}
+              onChange={(event) =>
+                onChange(
+                  { confirmation_message: event.target.value },
+                  "confirmation",
+                )
+              }
+              className={inputClass}
+            />
+          </SettingLabel>
+          <SettingLabel
+            label="Continue button URL"
+            hint="Optional. Applicants can follow this link after saving their reference number."
+          >
+            <input
+              type="url"
+              value={values.redirect_url || ""}
+              onChange={(event) =>
+                onChange({ redirect_url: event.target.value }, "redirect")
+              }
+              className={inputClass}
+              placeholder="https://example.com"
+            />
+          </SettingLabel>
+          <button
+            type="button"
+            className={buttonClass}
+            onClick={() => setConfirmationPreviewOpen(true)}
+          >
+            Preview thank-you screen
+          </button>
+        </SettingsCard>
+        {confirmationPreviewOpen && (
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Thank-you screen preview"
+            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4"
+          >
+            <div className="flex max-h-[calc(100dvh-2rem)] w-full max-w-xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+              <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3">
+                <div>
+                  <h2 className="text-sm font-bold text-slate-900">Thank-you screen preview</h2>
+                  <p className="mt-0.5 text-xs text-slate-500">This uses your current unsaved wording.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setConfirmationPreviewOpen(false)}
+                  className={buttonClass}
+                >
+                  Close
+                </button>
+              </div>
+              <div className="overflow-y-auto">
+                <FormThankYou
+                  preview
+                  message={values.confirmation_message}
+                  referenceNo="APP-27-EXAMPLE"
+                  redirectUrl={values.redirect_url}
+                />
+              </div>
+            </div>
+          </div>
+        )}
+      </>
     );
   if (section === "email")
     return (
@@ -459,3 +506,4 @@ export default function FormSettings({
     </div>
   );
 }
+
