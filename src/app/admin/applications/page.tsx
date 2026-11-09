@@ -145,8 +145,6 @@ export default function AdminApplicationsPage() {
                 <th className="p-3.5">App Number</th>
                 <th className="p-3.5">Student Name</th>
                 <th className="p-3.5">Registration Ref</th>
-                <th className="p-3.5">Program Track</th>
-                <th className="p-3.5">A/L Stream & Z-Score</th>
                 <th className="p-3.5">Status</th>
                 <th className="p-3.5 text-right">Actions</th>
               </tr>
@@ -154,14 +152,14 @@ export default function AdminApplicationsPage() {
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan={7} className="p-8 text-center text-slate-400">
+                  <td colSpan={5} className="p-8 text-center text-slate-400">
                     <Loader2 className="w-5 h-5 animate-spin mx-auto mb-2 text-indigo-600" />
                     Loading applications...
                   </td>
                 </tr>
               ) : applications.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="p-8 text-center text-slate-400">
+                  <td colSpan={5} className="p-8 text-center text-slate-400">
                     {pageError
                       ? "Data could not be loaded. Use refresh to try again."
                       : "No applications submitted yet."}
@@ -194,17 +192,6 @@ export default function AdminApplicationsPage() {
                     </td>
                     <td className="p-3.5 font-mono text-slate-700">
                       {app.registrationRef}
-                    </td>
-                    <td className="p-3.5 font-medium text-slate-800">
-                      {app.courseName}
-                    </td>
-                    <td className="p-3.5">
-                      <div className="font-semibold text-slate-800">
-                        {app.al_results?.stream}
-                      </div>
-                      <div className="text-[11px] text-slate-500">
-                        Z-Score: {app.al_results?.z_score ?? "N/A"}
-                      </div>
                     </td>
                     <td className="p-3.5">
                       <span
@@ -275,3 +262,4 @@ export default function AdminApplicationsPage() {
     </div>
   );
 }
+
