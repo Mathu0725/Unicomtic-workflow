@@ -53,6 +53,8 @@ const fieldSchema = z.object({
   required: z.boolean(),
   placeholder: z.string().max(2000).optional(),
   helpText: z.string().max(4000).optional(),
+  imageUrl: z.string().max(500).regex(/^\/[a-zA-Z0-9/_-]+\.(?:png|jpe?g|webp)$/).optional(),
+  imageAlt: z.string().trim().max(300).optional(),
   options: z.array(z.string().max(1000)).max(200).optional(),
   defaultValue: z
     .union([
@@ -131,6 +133,7 @@ export const workshopConfigSchema = z.object({
   help_text: z.string().max(500).optional(),
   empty_message: z.string().max(500).optional(),
   show_remaining: z.boolean().optional(),
+  send_form_receipt: z.boolean().optional(),
 }).refine(config => (config.hidden_ids || []).every(id => config.workshop_ids.includes(id)), "Hidden workshops must be attached to this form.");
 export const sheetsConfigSchema = z.object({
   enabled: z.boolean(),
@@ -210,6 +213,7 @@ export const formEditableSchema = z
     starts_at: z.string().datetime().or(z.literal("")),
     closes_at: z.string().datetime().or(z.literal("")),
     submission_limit: z.number().int().min(0).max(1000000),
+    campaign_id: z.string().trim().min(1).max(128),
   })
   .partial();
 export const formDraftSchema = formEditableSchema
