@@ -9,7 +9,7 @@ import {
   Notice,
 } from "./live-data";
 import { pendingPayload, submitRequest } from "@/lib/client/submit";
-import { readJson, responseError } from "@/lib/client/api";
+import { ApiError, readJson, responseError } from "@/lib/client/api";
 import SubmissionRecovery from "./submission-recovery";
 type Draft = {
   id?: string;
@@ -51,7 +51,8 @@ export default function SmtpConfiguration({
   const [draft, setDraft] = useState<Draft | null>(null),
     [busy, setBusy] = useState(false),
     [message, setMessage] = useState(""),
-    [error, setError] = useState("");
+    [error, setError] = useState(""),
+    [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({});
   const [accountId, setAccountId] = useState(""),
     [recipient, setRecipient] = useState("");
   const [attemptId, setAttemptId] = useState(""),
@@ -62,10 +63,25 @@ export default function SmtpConfiguration({
       pendingPayload("/api/admin/email/accounts/test") !== undefined,
     );
   }, []);
+  const errorFor = (key: string) =>
+    fieldErrors[`account.${key}`]?.[0] || fieldErrors[key]?.[0];
+  const updateDraft = (key: keyof Draft, value: unknown) => {
+    setDraft((current) =>
+      current ? ({ ...current, [key]: value } as Draft) : current,
+    );
+    setFieldErrors((current) => {
+      if (!current[`account.${key}`] && !current[key]) return current;
+      const next = { ...current };
+      delete next[`account.${key}`];
+      delete next[key];
+      return next;
+    });
+  };
   const run = async (body: unknown) => {
     setBusy(true);
     setError("");
     setMessage("");
+    setFieldErrors({});
     try {
       const data = await api("/api/admin/email/accounts", body);
       setMessage(data.message);
@@ -74,6 +90,7 @@ export default function SmtpConfiguration({
       await onChanged();
     } catch (error: any) {
       setError(error.message);
+      setFieldErrors(error instanceof ApiError ? error.fields || {} : {});
     } finally {
       setBusy(false);
     }
@@ -116,7 +133,7 @@ export default function SmtpConfiguration({
           type="button"
           className={buttonClass}
           disabled={busy || Boolean(draft)}
-          onClick={() => setDraft(empty())}
+          onClick={() => { setFieldErrors({}); setDraft(empty()); }}
         >
           Add SMTP account
         </button>
@@ -175,6 +192,7 @@ export default function SmtpConfiguration({
                     const item = directory.data.accounts.find(
                       (item: any) => item.id === account.id,
                     );
+                    setFieldErrors({});
                     setDraft({ ...empty(), ...item, password: "" });
                   }}
                 >
@@ -242,49 +260,48 @@ export default function SmtpConfiguration({
                 ["from_email", "From email", "email"],
                 ["reply_to", "Reply-to email (optional)", "email"],
               ] as const
-            ).map(([key, label, type]) => (
-              <label className="text-xs font-semibold" key={key}>
-                {label}
-                <input
-                  className={`${inputClass} mt-1`}
-                  required={
-                    key !== "reply_to" &&
-                    (key !== "password" || !draft.passwordSaved)
-                  }
-                  type={type}
-                  autoComplete={key === "password" ? "new-password" : "off"}
-                  value={draft[key]}
-                  onChange={(event) =>
-                    setDraft({ ...draft, [key]: event.target.value })
-                  }
-                />
-              </label>
-            ))}
+            ).map(([key, label, type]) => {
+              const fieldError = errorFor(key);
+              return (
+                <label className="text-xs font-semibold" key={key}>
+                  {label}
+                  <input
+                    className={`${inputClass} mt-1 ${fieldError ? "border-red-500 focus:border-red-600 focus:ring-red-100" : ""}`}
+                    required={
+                      key !== "reply_to" &&
+                      (key !== "password" || !draft.passwordSaved)
+                    }
+                    type={type}
+                    autoComplete={key === "password" ? "new-password" : "off"}
+                    value={draft[key]}
+                    aria-invalid={Boolean(fieldError)}
+                    aria-describedby={fieldError ? `smtp-${key}-error` : undefined}
+                    onChange={(event) => updateDraft(key, event.target.value)}
+                  />
+                  {fieldError && <span id={`smtp-${key}-error`} className="mt-1 block text-xs font-normal text-red-700">{fieldError}</span>}
+                </label>
+              );
+            })}
             <label className="text-xs font-semibold">
               Port
-              <input
-                className={`${inputClass} mt-1`}
+              {(() => { const fieldError = errorFor("port"); return <><input
+                className={`${inputClass} mt-1 ${fieldError ? "border-red-500 focus:border-red-600 focus:ring-red-100" : ""}`}
                 required
                 type="number"
                 min={1}
                 max={65535}
                 value={draft.port}
-                onChange={(event) =>
-                  setDraft({ ...draft, port: Number(event.target.value) })
-                }
-              />
+                aria-invalid={Boolean(fieldError)}
+                aria-describedby={fieldError ? "smtp-port-error" : undefined}
+                onChange={(event) => updateDraft("port", Number(event.target.value))}
+              />{fieldError && <span id="smtp-port-error" className="mt-1 block text-xs font-normal text-red-700">{fieldError}</span>}</>; })()}
             </label>
             <label className="text-xs font-semibold">
               Encryption
               <select
                 className={`${inputClass} mt-1`}
                 value={draft.encryption}
-                onChange={(event) =>
-                  setDraft({
-                    ...draft,
-                    encryption: event.target.value as Draft["encryption"],
-                  })
-                }
+                onChange={(event) => updateDraft("encryption", event.target.value as Draft["encryption"])}
               >
                 <option value="starttls">STARTTLS · usually port 587</option>
                 <option value="tls">Implicit TLS · usually port 465</option>
@@ -292,43 +309,36 @@ export default function SmtpConfiguration({
             </label>
             <label className="text-xs font-semibold">
               Connection timeout (ms)
-              <input
-                className={`${inputClass} mt-1`}
+              {(() => { const fieldError = errorFor("timeout_ms"); return <><input
+                className={`${inputClass} mt-1 ${fieldError ? "border-red-500 focus:border-red-600 focus:ring-red-100" : ""}`}
                 required
                 type="number"
                 min={3000}
                 max={20000}
                 value={draft.timeout_ms}
-                onChange={(event) =>
-                  setDraft({ ...draft, timeout_ms: Number(event.target.value) })
-                }
-              />
+                aria-invalid={Boolean(fieldError)}
+                aria-describedby={fieldError ? "smtp-timeout-error" : undefined}
+                onChange={(event) => updateDraft("timeout_ms", Number(event.target.value))}
+              />{fieldError && <span id="smtp-timeout-error" className="mt-1 block text-xs font-normal text-red-700">{fieldError}</span>}</>; })()}
             </label>
             <label className="text-xs font-semibold">
               Account daily limit (optional, 1–500)
-              <input
-                className={`${inputClass} mt-1`}
+              {(() => { const fieldError = errorFor("daily_limit"); return <><input
+                className={`${inputClass} mt-1 ${fieldError ? "border-red-500 focus:border-red-600 focus:ring-red-100" : ""}`}
                 type="number"
                 min={1}
                 max={500}
                 value={draft.daily_limit ?? ""}
-                onChange={(event) =>
-                  setDraft({
-                    ...draft,
-                    daily_limit: event.target.value
-                      ? Number(event.target.value)
-                      : null,
-                  })
-                }
-              />
+                aria-invalid={Boolean(fieldError)}
+                aria-describedby={fieldError ? "smtp-limit-error" : undefined}
+                onChange={(event) => updateDraft("daily_limit", event.target.value ? Number(event.target.value) : null)}
+              />{fieldError && <span id="smtp-limit-error" className="mt-1 block text-xs font-normal text-red-700">{fieldError}</span>}</>; })()}
             </label>
             <label className="flex items-center gap-2 text-sm">
               <input
                 type="checkbox"
                 checked={draft.is_active}
-                onChange={(event) =>
-                  setDraft({ ...draft, is_active: event.target.checked })
-                }
+                onChange={(event) => updateDraft("is_active", event.target.checked)}
               />
               Account enabled
             </label>
@@ -438,3 +448,4 @@ export default function SmtpConfiguration({
     </section>
   );
 }
+
