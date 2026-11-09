@@ -5,6 +5,18 @@ import { getDb } from "../data/store";
 export const idSchema = z.string().trim().min(1).max(128);
 export const idsSchema = z.array(idSchema).min(1).max(1000).refine(ids => new Set(ids).size === ids.length, "Remove duplicate selections.");
 export const dateSchema = z.string().max(64).refine(v => Number.isFinite(Date.parse(v)), "Enter a valid date and time.");
+// Empty dates mean that staff have chosen not to set an opening or closing date.
+// Keep that separate from a malformed date so intake creation has predictable values.
+const intakeDateSchema = z.union([z.literal(""), z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Enter a valid date.")]);
+export const campaignCreateSchema = z.object({
+    title: z.string().trim().min(3).max(160),
+    academic_year: z.string().trim().min(4).max(32),
+    description: z.string().trim().max(2000).default(""),
+    start_date: intakeDateSchema.optional().default(""),
+    end_date: intakeDateSchema.optional().default(""),
+    auto_invite_applications: z.boolean().default(false),
+    is_active: z.boolean().default(true),
+}).refine(value => !value.start_date || !value.end_date || value.start_date <= value.end_date, "Closing date must be on or after opening date.");
 export const campaignPatchSchema = z.object({ id: idSchema, auto_invite_applications: z.boolean().optional(), is_active: z.boolean().optional() }).refine(v => v.auto_invite_applications !== undefined || v.is_active !== undefined, "Select a change.");
 export const applicationPatchSchema = z.object({ id: idSchema, status: z.enum(["invited", "started", "submitted", "under_review", "approved", "rejected", "withdrawn"]).optional(), review_notes: z.string().max(10000).optional(), expectedStatus: z.string().optional() });
 export const attendanceSchema = z.object({ workshopId: idSchema, studentId: idSchema, status: z.enum(["attended", "absent", "late", "excused"]).default("attended"), notes: z.string().max(2000).optional() });
@@ -22,3 +34,4 @@ export function requireStudentInCampaign(studentId: string, campaignId: string) 
     if (!getDb().students.some(s => s.id === studentId) || !getDb().registrations.some(r => r.student_id === studentId && r.campaign_id === campaignId && r.status !== "cancelled"))
         throw new AppError("STUDENT_INTAKE_MISMATCH", "A selected student does not belong to this intake.", 400);
 }
+
