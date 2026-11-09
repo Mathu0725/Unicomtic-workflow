@@ -24,12 +24,25 @@ import {
   Layers,
   Settings2,
   RotateCw,
-  X
+  X,
+  CalendarDays
 } from "lucide-react";
+
+type Intake = {
+  id: string;
+  code: string;
+  title: string;
+  academic_year: string;
+  description: string;
+  is_active: boolean;
+  start_date: string;
+  end_date: string;
+};
 
 export default function AdminFormsPage() {
   const [pageError, setPageError] = useState("");
   const [forms, setForms] = useState<any[]>([]);
+  const [intakes, setIntakes] = useState<Intake[]>([]);
   const [loading, setLoading] = useState(true);
   const [duplicatingId, setDuplicatingId] = useState<string | null>(null);
   const [accessUpdatingId, setAccessUpdatingId] = useState<string | null>(null);
@@ -37,6 +50,7 @@ export default function AdminFormsPage() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newTitle, setNewTitle] = useState("");
   const [newType, setNewType] = useState("registration");
+  const [newCampaignId, setNewCampaignId] = useState("");
   const [enableWorkshops, setEnableWorkshops] = useState(false);
   const [newGoogleFormUrl, setNewGoogleFormUrl] = useState("");
   const [newSheetUrl, setNewSheetUrl] = useState("");
@@ -50,6 +64,14 @@ export default function AdminFormsPage() {
   const [syncingSheet, setSyncingSheet] = useState(false);
   const [syncingId, setSyncingId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  const [showIntakeModal, setShowIntakeModal] = useState(false);
+  const [intakeTitle, setIntakeTitle] = useState("");
+  const [intakeYear, setIntakeYear] = useState(String(new Date().getFullYear()));
+  const [intakeDescription, setIntakeDescription] = useState("");
+  const [intakeStartsAt, setIntakeStartsAt] = useState("");
+  const [intakeClosesAt, setIntakeClosesAt] = useState("");
+  const [creatingIntake, setCreatingIntake] = useState(false);
+  const [updatingIntakeId, setUpdatingIntakeId] = useState<string | null>(null);
   const [banner, setBanner] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
   const fetchForms = async () => {
@@ -60,6 +82,10 @@ export default function AdminFormsPage() {
       const data = await res.json();
       if (data.forms) {
         setForms(data.forms);
+      }
+      if (data.intakes) {
+        setIntakes(data.intakes);
+        setNewCampaignId((current) => current || data.intakes.find((item: Intake) => item.is_active)?.id || "");
       }
     } catch (e) {
       setPageError(e instanceof Error ? e.message : "Could not load or save this data. Please try again.");
@@ -191,6 +217,7 @@ export default function AdminFormsPage() {
           action: "create",
           title: newTitle,
           type: newType,
+          campaignId: newCampaignId,
           google_form_url: newGoogleFormUrl.trim() || undefined,
           workshop_config: { enabled: enableWorkshops, required: enableWorkshops, workshop_ids: [] },
           google_sheets_config: sheetId
@@ -208,6 +235,7 @@ export default function AdminFormsPage() {
       if (data.success) {
         setShowCreateModal(false);
         setNewTitle("");
+        setNewCampaignId(intakes.find((item) => item.is_active)?.id || "");
         setNewGoogleFormUrl("");
         setNewSheetUrl("");
         setNewSheetName("Sheet1");
@@ -220,6 +248,59 @@ export default function AdminFormsPage() {
       setBanner({ type: "error", message: err.message || "Failed to create form." });
     } finally {
       setCreating(false);
+    }
+  };
+
+  const handleToggleIntake = async (intake: Intake) => {
+    if (updatingIntakeId) return;
+    setUpdatingIntakeId(intake.id);
+    setBanner(null);
+    try {
+      const res = await apiResponse("/api/admin/campaigns", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: intake.id, is_active: !intake.is_active }),
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.message || "Could not update the intake.");
+      setIntakes((current) => current.map((item) => item.id === intake.id ? data.campaign : item));
+      setNewCampaignId((current) => !intake.is_active ? intake.id : current === intake.id ? "" : current);
+      setBanner({ type: "success", message: `“${intake.title}” is now ${intake.is_active ? "closed" : "accepting submissions"}.` });
+    } catch (error) {
+      setBanner({ type: "error", message: error instanceof Error ? error.message : "Could not update the intake." });
+    } finally {
+      setUpdatingIntakeId(null);
+    }
+  };
+
+  const handleCreateIntake = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setCreatingIntake(true);
+    setBanner(null);
+    try {
+      const res = await apiResponse("/api/admin/campaigns", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: intakeTitle,
+          academic_year: intakeYear,
+          description: intakeDescription,
+          start_date: intakeStartsAt || undefined,
+          end_date: intakeClosesAt || undefined,
+          is_active: true,
+        }),
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.message || "Could not create the intake.");
+      setIntakes((current) => [...current, data.campaign]);
+      setNewCampaignId(data.campaign.id);
+      setIntakeTitle(""); setIntakeDescription(""); setIntakeStartsAt(""); setIntakeClosesAt("");
+      setShowIntakeModal(false);
+      setBanner({ type: "success", message: `“${data.campaign.title}” is active. New forms can now use this intake.` });
+    } catch (error) {
+      setBanner({ type: "error", message: error instanceof Error ? error.message : "Could not create the intake." });
+    } finally {
+      setCreatingIntake(false);
     }
   };
 
@@ -331,6 +412,8 @@ export default function AdminFormsPage() {
     try { await navigator.clipboard.writeText(publicUrl); setCopiedId(id); setTimeout(() => setCopiedId(null), 2500); } catch { setPageError("Could not copy this link. Select and copy the displayed URL manually."); }
   };
 
+  const activeIntakes = intakes.filter((intake) => intake.is_active);
+
   return (
     <div className="space-y-6">
       <RequestNotice error>{pageError}</RequestNotice>
@@ -346,13 +429,32 @@ export default function AdminFormsPage() {
           </p>
         </div>
 
-        <button
-          onClick={() => setShowCreateModal(true)}
-          className="inline-flex shrink-0 items-center gap-2 self-start whitespace-nowrap rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 sm:self-auto cursor-pointer"
-        >
-          <Plus className="w-4 h-4" />
-          Create New Form
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => setShowIntakeModal(true)}
+            className="inline-flex shrink-0 items-center gap-2 self-start whitespace-nowrap rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
+          >
+            <CalendarDays className="h-4 w-4" />
+            Manage intakes
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              if (!activeIntakes.length) {
+                setBanner({ type: "error", message: "Create or open an intake before creating a form." });
+                setShowIntakeModal(true);
+                return;
+              }
+              setNewCampaignId((current) => current || activeIntakes[0].id);
+              setShowCreateModal(true);
+            }}
+            className="inline-flex shrink-0 items-center gap-2 self-start whitespace-nowrap rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 sm:self-auto cursor-pointer"
+          >
+            <Plus className="w-4 h-4" />
+            Create New Form
+          </button>
+        </div>
       </div>
 
       {banner && (
@@ -371,6 +473,25 @@ export default function AdminFormsPage() {
           {banner.message}
         </div>
       )}
+
+      <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-bold text-slate-900">Current intake</h2>
+            <p className="mt-1 text-xs text-slate-600">Only active intakes can receive registrations or be selected for a new form.</p>
+          </div>
+          <button type="button" onClick={() => setShowIntakeModal(true)} className="text-xs font-semibold text-blue-700 hover:underline">Manage intakes</button>
+        </div>
+        <div className="mt-4 flex flex-wrap gap-2">
+          {intakes.map((intake) => (
+            <span key={intake.id} className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold ${intake.is_active ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-slate-200 bg-slate-50 text-slate-600"}`}>
+              {intake.academic_year} · {intake.title}
+              <span className="font-medium">{intake.is_active ? "Open" : "Closed"}</span>
+            </span>
+          ))}
+          {!intakes.length && <p className="text-sm text-slate-500">No intake created yet.</p>}
+        </div>
+      </section>
 
       {/* Forms Grid */}
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
@@ -637,6 +758,52 @@ export default function AdminFormsPage() {
         )}
       </div>
 
+      {showIntakeModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm">
+          <div className="relative max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-6 text-xs shadow-xl">
+            <button type="button" onClick={() => setShowIntakeModal(false)} className="absolute right-4 top-4 rounded-lg p-1 text-slate-400 hover:text-slate-700" aria-label="Close intake management"><X className="h-5 w-5" /></button>
+            <h2 className="flex items-center gap-2 text-base font-bold text-slate-900"><CalendarDays className="h-4 w-4 text-blue-600" />Intakes and academic years</h2>
+            <p className="mt-1 text-slate-500">Open an intake when it is ready to receive registrations. Closing it stops every form linked to that intake.</p>
+
+            <div className="mt-5 space-y-3">
+              {intakes.map((intake) => (
+                <div key={intake.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 p-3">
+                  <div className="min-w-0">
+                    <p className="truncate font-bold text-slate-900">{intake.title}</p>
+                    <p className="mt-1 text-slate-500">{intake.academic_year}{intake.start_date || intake.end_date ? ` · ${intake.start_date || "No opening date"} to ${intake.end_date || "No closing date"}` : ""}</p>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={intake.is_active}
+                    disabled={updatingIntakeId === intake.id}
+                    onClick={() => void handleToggleIntake(intake)}
+                    className={`min-w-24 rounded-lg border px-3 py-2 font-bold transition disabled:opacity-60 ${intake.is_active ? "border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100" : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"}`}
+                  >
+                    {updatingIntakeId === intake.id ? "Saving…" : intake.is_active ? "Open" : "Closed"}
+                  </button>
+                </div>
+              ))}
+              {!intakes.length && <p className="rounded-xl border border-dashed border-slate-300 p-4 text-sm text-slate-500">Create your first intake below.</p>}
+            </div>
+
+            <form onSubmit={handleCreateIntake} className="mt-6 space-y-3 border-t border-slate-200 pt-5">
+              <h3 className="font-bold text-slate-900">Create an intake</h3>
+              <div className="grid gap-3 sm:grid-cols-[1fr_150px]">
+                <label className="block font-semibold text-slate-700">Intake name *<input required maxLength={160} value={intakeTitle} onChange={(event) => setIntakeTitle(event.target.value)} placeholder="e.g. Unicom TIC Scholarship Intake" className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 font-normal" /></label>
+                <label className="block font-semibold text-slate-700">Academic year *<input required maxLength={32} value={intakeYear} onChange={(event) => setIntakeYear(event.target.value)} placeholder="2027" className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 font-normal" /></label>
+              </div>
+              <label className="block font-semibold text-slate-700">Short description <textarea maxLength={2000} rows={2} value={intakeDescription} onChange={(event) => setIntakeDescription(event.target.value)} placeholder="Optional note shown to staff" className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 font-normal" /></label>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="block font-semibold text-slate-700">Opens on <input type="date" value={intakeStartsAt} onChange={(event) => setIntakeStartsAt(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 font-normal" /></label>
+                <label className="block font-semibold text-slate-700">Closes on <input type="date" value={intakeClosesAt} onChange={(event) => setIntakeClosesAt(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 font-normal" /></label>
+              </div>
+              <div className="flex justify-end gap-2 pt-1"><button type="button" onClick={() => setShowIntakeModal(false)} className="rounded-xl bg-slate-100 px-4 py-2 font-bold hover:bg-slate-200">Cancel</button><button type="submit" disabled={creatingIntake} className="rounded-xl bg-blue-600 px-5 py-2 font-bold text-white shadow hover:bg-blue-700 disabled:bg-blue-300">{creatingIntake ? "Creating…" : "Create active intake"}</button></div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Create New Form Modal */}
       {showCreateModal && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
@@ -656,6 +823,14 @@ export default function AdminFormsPage() {
             </p>
 
             <form onSubmit={handleCreateForm} className="space-y-4">
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Intake / academic year *</label>
+                <select required value={newCampaignId} onChange={(event) => setNewCampaignId(event.target.value)} className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white font-medium">
+                  <option value="">Choose an open intake</option>
+                  {activeIntakes.map((intake) => <option key={intake.id} value={intake.id}>{intake.academic_year} · {intake.title}</option>)}
+                </select>
+                <p className="mt-1 text-[11px] text-slate-500">Need another year? <button type="button" onClick={() => { setShowCreateModal(false); setShowIntakeModal(true); }} className="font-semibold text-blue-700 hover:underline">Create an intake</button>.</p>
+              </div>
               <div>
                 <label className="block font-semibold text-slate-700 mb-1">Form Title *</label>
                 <input
@@ -896,3 +1071,4 @@ export default function AdminFormsPage() {
     </div>
   );
 }
+
