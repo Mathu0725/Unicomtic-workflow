@@ -190,6 +190,30 @@ it("saves the approved Google connection without creating or replacing a staff s
     expect(exchange).toHaveBeenCalledWith("test-code", "test-pkce-verifier");
 });
 
+it("returns blocked Google deliveries to the queue after reconnecting", async () => {
+    await transaction(db => {
+        db.outbox.push({
+            id: "blocked-google-mail",
+            key: "mail:blocked",
+            type: "email",
+            status: "blocked",
+            attempts: 1,
+            created_at: new Date().toISOString(),
+            email_account_id: "gmail",
+            error: "Google authorization expired or was revoked. Reconnect Google.",
+            error_code: "GOOGLE_AUTH_REVOKED",
+            repair_action: "reconnect_google",
+            payload: { to: "applicant@example.com" },
+        });
+    });
+    const response = await callback();
+    expect(location(response).searchParams.get("released")).toBe("1");
+    const job = (await readDatabase()).outbox.find(item => item.id === "blocked-google-mail")!;
+    expect(job).toMatchObject({ status: "queued", attempts: 0 });
+    expect(job.error).toBeUndefined();
+    expect(job.error_code).toBeUndefined();
+});
+
 it("preserves the existing connection when Gmail/Sheets consent is incomplete", async () => {
     exchange.mockResolvedValue({ access_token: "test-access-token", refresh_token: "test-refresh-token", scope: "openid email profile" });
     const response = await callback();
@@ -220,3 +244,4 @@ it("does not reuse another account's refresh token when switching Google account
     expect(connection.email).toBe("original-owner@example.com");
     expect(decrypt(connection.refresh_token)).toBe("original-refresh-token");
 });
+
