@@ -3,7 +3,7 @@
 export const correctedTemplateCopy: Record<string, { body: string; subject?: string; variables?: string[] }> = {
   registration_confirmation: { body: "Dear {{name}},\n\nYour registration for {{intake}} has been received.\nYour reference: {{reference}}.\n\nBest regards,\nUnicomTIC." },
   application_confirmation: { body: "Dear {{name}},\n\nYour application for the {{programme}} has been received successfully.\nYour reference: {{reference}}.\n\nBest regards,\nUnicomTIC." },
-  application_invitation: { body: "Dear {{name}},\n\nWe hope this email finds you well!\nThank you for your interest.\n\nPlease follow the application link below to submit your application. Complete the application as soon as possible, as spaces on the workshops are limited.\n\nIf you have any questions or need assistance with the application process, please contact us at {{contactEmail}} or call {{contactPhone}}.\n\nBest regards,\nUnicomTIC." },
+  application_invitation: { body: "Dear {{name}},\n\nThank you for registering your interest for {{intake}}.\n\nPlease complete your application using the link below. Submit it as soon as possible, as workshop places are limited.\n\n{{applicationUrl}}\n\nIf you need help, contact us at {{contactEmail}} or call {{contactPhone}}.\n\nBest regards,\nUnicomTIC." },
   workshop_invitation: {
     subject: "Register for your Unicom TIC workshop — {{reference}}",
     body: "Dear {{name}},\n\nWe are excited to invite you to register for our upcoming workshop! Please fill out the form below carefully to complete your registration, as you can submit it only once.\n\nPlease ensure that the phone number and email address you provide match the ones you submitted in your application.\n\n{{workshopRegistrationUrl}}\n\nBest regards,\nUnicomTIC.",
