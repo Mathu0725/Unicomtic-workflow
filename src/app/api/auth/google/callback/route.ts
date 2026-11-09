@@ -7,6 +7,13 @@ import { AppError } from "@/lib/errors/app-error";
 import { transaction } from "@/lib/data/repository";
 import { recordEvent, requestContext } from "@/lib/observability/logger";
 export const dynamic = "force-dynamic";
+const googleRepairCodes = new Set([
+    "GOOGLE_AUTH_REVOKED",
+    "GOOGLE_NOT_CONNECTED",
+    "GOOGLE_NOT_CONFIGURED",
+    "GOOGLE_TOKEN_FAILED",
+    "GOOGLE_TOKEN_UNREADABLE",
+]);
 export const GET = route(async req => {
     const staff = getSession(req);
     const administrator = staff && ["admin", "super_admin"].includes(staff.role);
@@ -31,14 +38,29 @@ export const GET = route(async req => {
         if (!GOOGLE_SCOPES.filter(s => s.startsWith("https:")).every(s => scopes.includes(s))) throw new AppError("GOOGLE_SCOPE_MISSING", "Required Google permissions were not granted.");
         if (pending.drive && !scopes.includes(GOOGLE_DRIVE_SCOPE)) throw new AppError("GOOGLE_DRIVE_SCOPE_MISSING", "Google Drive access was not granted.");
         // Provider calls finish before the short, retry-safe commit.
-        await transaction(db => {
+        const released = await transaction(db => {
             const refresh = tokens.refresh_token ? encrypt(tokens.refresh_token) : db.integrations.google?.email === email ? db.integrations.google.refresh_token : undefined;
             if (!refresh) throw new AppError("GOOGLE_OFFLINE_MISSING", "Google did not return offline access.");
             db.integrations.google = { email, refresh_token: refresh, scopes, connected_at: new Date().toISOString() };
             if (!db.integrations.admin_notification_email) db.integrations.admin_notification_email = email;
+            let count = 0;
+            for (const job of db.outbox) {
+                if (job.status !== "blocked" || !googleRepairCodes.has(job.error_code || "")) continue;
+                job.status = "queued";
+                job.attempts = 0;
+                job.next_attempt_at = undefined;
+                job.error = undefined;
+                job.error_code = undefined;
+                job.repair_action = undefined;
+                count++;
+            }
+            return count;
         }, { maxConflictRetries: 8 });
         clearGoogleTokenCache();
-        const res = NextResponse.redirect(new URL(`/admin/google-integrations?connected=${pending.drive ? "drive" : "1"}`, req.url));
+        recordEvent("GOOGLE_CONNECTION_REPAIRED", { status: 200 });
+        const params = new URLSearchParams({ connected: pending.drive ? "drive" : "1" });
+        if (released) params.set("released", String(released));
+        const res = NextResponse.redirect(new URL(`/admin/google-integrations?${params}`, req.url));
         res.cookies.delete("google_oauth_state");
         return res;
     } catch (error) {
@@ -51,3 +73,4 @@ export const GET = route(async req => {
         return res;
     }
 }, false, { database: false });
+
