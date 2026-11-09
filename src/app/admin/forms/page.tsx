@@ -72,6 +72,7 @@ export default function AdminFormsPage() {
   const [intakeClosesAt, setIntakeClosesAt] = useState("");
   const [creatingIntake, setCreatingIntake] = useState(false);
   const [updatingIntakeId, setUpdatingIntakeId] = useState<string | null>(null);
+  const [updatingFormIntakeId, setUpdatingFormIntakeId] = useState<string | null>(null);
   const [banner, setBanner] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
   const fetchForms = async () => {
@@ -270,6 +271,29 @@ export default function AdminFormsPage() {
       setBanner({ type: "error", message: error instanceof Error ? error.message : "Could not update the intake." });
     } finally {
       setUpdatingIntakeId(null);
+    }
+  };
+
+  const handleFormIntakeChange = async (form: any, campaignId: string) => {
+    if (!campaignId || campaignId === form.campaign_id || updatingFormIntakeId) return;
+    const intake = intakes.find((item) => item.id === campaignId);
+    if (!intake?.is_active) return;
+    setUpdatingFormIntakeId(form.id);
+    setBanner(null);
+    try {
+      const res = await apiResponse(`/api/admin/forms/${form.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ campaign_id: campaignId, expectedUpdatedAt: form.updated_at }),
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.message || "Could not update the form intake.");
+      setForms((current) => current.map((item) => item.id === form.id ? data.form : item));
+      setBanner({ type: "success", message: `“${form.title}” now belongs to ${intake.academic_year} · ${intake.title}.` });
+    } catch (error) {
+      setBanner({ type: "error", message: error instanceof Error ? error.message : "Could not update the form intake." });
+    } finally {
+      setUpdatingFormIntakeId(null);
     }
   };
 
@@ -553,6 +577,24 @@ export default function AdminFormsPage() {
 
                   <h2 className="text-lg font-bold text-slate-900 mb-1">{form.title}</h2>
                   <p className="text-xs text-slate-500 line-clamp-2 mb-4">{form.description}</p>
+
+                  <div className="mb-4 rounded-xl border border-violet-100 bg-violet-50/60 p-3">
+                    <label className="block text-[11px] font-bold uppercase tracking-wide text-violet-800" htmlFor={`form-intake-${form.id}`}>Intake / academic year</label>
+                    <div className="mt-2 flex items-center gap-2">
+                      <select
+                        id={`form-intake-${form.id}`}
+                        value={form.campaign_id || ""}
+                        disabled={updatingFormIntakeId === form.id || !activeIntakes.length}
+                        onChange={(event) => void handleFormIntakeChange(form, event.target.value)}
+                        className="min-w-0 flex-1 rounded-lg border border-violet-200 bg-white px-3 py-2 text-xs font-semibold text-slate-800 disabled:opacity-60"
+                      >
+                        <option value="">Choose an open intake</option>
+                        {intakes.map((intake) => <option key={intake.id} value={intake.id} disabled={!intake.is_active && intake.id !== form.campaign_id}>{intake.academic_year} · {intake.title}{intake.is_active ? "" : " (Closed)"}</option>)}
+                      </select>
+                      {updatingFormIntakeId === form.id && <Loader2 className="h-4 w-4 shrink-0 animate-spin text-violet-700" aria-label="Saving intake" />}
+                    </div>
+                    <p className="mt-1.5 text-[11px] text-slate-600">Choose the year this existing form belongs to. Only open intakes can be selected.</p>
+                  </div>
 
                   {form.type === "application" && (
                     <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-blue-100 bg-blue-50/60 p-3">
