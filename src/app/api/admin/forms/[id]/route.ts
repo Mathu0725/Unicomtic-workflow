@@ -55,13 +55,18 @@ export const PATCH = route(
       })
       .safeParse(await req.json());
     if (!parsed.success) throw new RequestError(parsed.error.issues[0].message);
+    if (parsed.data.action === "save_draft" && parsed.data.campaign_id !== undefined)
+      throw new RequestError("Choose an intake from the published form settings, not its draft.");
+    const nextCampaignId = parsed.data.campaign_id ?? form.campaign_id;
+    if (parsed.data.campaign_id !== undefined && !getDb().campaigns.some((campaign) => campaign.id === nextCampaignId && campaign.is_active))
+      throw new RequestError("Choose an open intake for this form.");
     const workshopConfig = parsed.data.action === "save_draft" ? parsed.data.draft?.workshop_config : parsed.data.workshop_config;
-    if (workshopConfig?.workshop_ids.some(id => !getDb().workshops.some(w => w.id === id && w.campaign_id === form.campaign_id)))
-      throw new RequestError("Choose workshops from this form's intake.");
     const effectiveConfig = workshopConfig || form.workshop_config;
-    if (parsed.data.action === "publish" && (parsed.data.status || form.status || "published") === "published" && effectiveConfig?.enabled && getDb().workshops.some(w => w.explicit_form_attachment && Date.parse(w.start_time) > Date.now() && workshopAttached(w, form.campaign_id, effectiveConfig) && !isGoogleMapsUrl(w.google_maps_url)))
+    if (effectiveConfig?.workshop_ids.some(id => !getDb().workshops.some(w => w.id === id && w.campaign_id === nextCampaignId)))
+      throw new RequestError("Choose workshops from this form's intake.");
+    if (parsed.data.action === "publish" && (parsed.data.status || form.status || "published") === "published" && effectiveConfig?.enabled && getDb().workshops.some(w => w.explicit_form_attachment && Date.parse(w.start_time) > Date.now() && workshopAttached(w, nextCampaignId, effectiveConfig) && !isGoogleMapsUrl(w.google_maps_url)))
       throw new RequestError("Add a Google Maps link to each new visible workshop before publishing. You can save this form as a draft meanwhile.");
-    if (parsed.data.action === "publish" && (parsed.data.status || form.status || "published") === "published" && effectiveConfig?.enabled && effectiveConfig.required && !availableWorkshops(form.campaign_id, effectiveConfig).some(w => w.bookable))
+    if (parsed.data.action === "publish" && (parsed.data.status || form.status || "published") === "published" && effectiveConfig?.enabled && effectiveConfig.required && !availableWorkshops(nextCampaignId, effectiveConfig).some(w => w.bookable))
       throw new RequestError("The required workshop block has no open session with seats. Attach an available workshop or make selection optional before publishing.");
     if (parsed.data.action) {
       if (
@@ -165,15 +170,6 @@ export const PATCH = route(
         409,
         { code: "FORM_LINK_TAKEN" },
       );
-    if (
-      parsed.data.workshop_config?.workshop_ids.some(
-        (id) =>
-          !getDb().workshops.some(
-            (w) => w.id === id && w.campaign_id === form.campaign_id,
-          ),
-      )
-    )
-      throw new RequestError("Choose workshops from this form's intake.");
     if (parsed.data.email_automation) {
       const automation = parsed.data.email_automation;
       for (const id of [automation.applicant_account_id,automation.applicant_fallback_account_id,automation.admin_account_id,automation.admin_fallback_account_id]) validateEmailAccount(getDb(),id);
@@ -185,7 +181,7 @@ export const PATCH = route(
           (target) =>
             target.id === parsed.data.email_automation!.invitation_form_id &&
             target.type === "application" &&
-            target.campaign_id === form.campaign_id,
+            target.campaign_id === nextCampaignId,
         ))
     )
       throw new RequestError(
@@ -261,6 +257,7 @@ export const PATCH = route(
     if (action === "publish") delete form.editor_draft;
     audit("FORM_UPDATED", "custom_forms", form.id, {
       title: form.title,
+      ...(parsed.data.campaign_id !== undefined ? { campaign_id: form.campaign_id } : {}),
       ...(changingLink ? { previousSlug, slug: form.slug } : {}),
     });
     return NextResponse.json({
@@ -298,3 +295,4 @@ export const DELETE = route(
   },
   true,
 );
+
