@@ -1,5 +1,6 @@
 "use client";
 import { apiResponse } from "@/lib/client/api";
+import { chooseGoogleSpreadsheet } from "@/lib/client/google-spreadsheet-picker";
 import { Notice as RequestNotice } from "@/components/live-data";
 
 import { useState, useEffect } from "react";
@@ -58,6 +59,12 @@ export default function AdminFormsPage() {
   const [sheetModalForm, setSheetModalForm] = useState<any | null>(null);
   const [sheetUrl, setSheetUrl] = useState("");
   const [sheetName, setSheetName] = useState("Sheet1");
+  const [sheetTabs, setSheetTabs] = useState<string[]>([]);
+  const [selectedSheetTitle, setSelectedSheetTitle] = useState("");
+  const [connectedGoogleEmail, setConnectedGoogleEmail] = useState("");
+  const [googleDriveAccess, setGoogleDriveAccess] = useState(false);
+  const [loadingSheetTabs, setLoadingSheetTabs] = useState(false);
+  const [sheetPickerError, setSheetPickerError] = useState("");
   const [sheetEnabled, setSheetEnabled] = useState(false);
   const [sheetAutoSync, setSheetAutoSync] = useState(true);
   const [savingSheet, setSavingSheet] = useState(false);
@@ -328,12 +335,79 @@ export default function AdminFormsPage() {
     }
   };
 
+  const loadSheetTabs = async (formId: string, value: string, preferredTab?: string) => {
+    const raw = value.trim();
+    if (!raw) {
+      setSheetPickerError("Choose a spreadsheet or enter its URL/ID first.");
+      return;
+    }
+    setLoadingSheetTabs(true);
+    setSheetPickerError("");
+    try {
+      const res = await apiResponse(`/api/admin/forms/${formId}/sheets`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "inspect", sheetId: raw }),
+      });
+      const data = await res.json();
+      setSheetUrl(data.sheetId);
+      setSelectedSheetTitle(data.title || "");
+      setSheetTabs(data.worksheets || []);
+      setSheetName((current) =>
+        data.worksheets?.includes(preferredTab || current)
+          ? preferredTab || current
+          : data.worksheets?.[0] || preferredTab || current || "Sheet1",
+      );
+    } catch (error) {
+      setSheetPickerError(error instanceof Error ? error.message : "Could not load spreadsheet tabs.");
+      setSheetTabs([]);
+    } finally {
+      setLoadingSheetTabs(false);
+    }
+  };
+
+  const selectSheetFromDrive = async () => {
+    if (!sheetModalForm) return;
+    setLoadingSheetTabs(true);
+    setSheetPickerError("");
+    try {
+      const selected = await chooseGoogleSpreadsheet();
+      if (!selected) return;
+      // Keep the previous destination until Google confirms the selected file
+      // and its worksheet tabs can be read.
+      await loadSheetTabs(sheetModalForm.id, selected.id, sheetName);
+    } catch (error) {
+      setSheetPickerError(error instanceof Error ? error.message : "Could not open Google Drive.");
+    } finally {
+      setLoadingSheetTabs(false);
+    }
+  };
+
   const openSheetModal = (form: any) => {
     setSheetModalForm(form);
     setSheetEnabled(form.google_sheets_config?.enabled ?? false);
     setSheetUrl(form.google_sheets_config?.sheet_id || "");
     setSheetName(form.google_sheets_config?.sheet_name || "Sheet1");
     setSheetAutoSync(form.google_sheets_config?.auto_sync ?? true);
+    setSheetTabs([]);
+    setSelectedSheetTitle("");
+    setSheetPickerError("");
+    void apiResponse("/api/admin/integrations")
+      .then((response) => response.json())
+      .then((data) => {
+        setConnectedGoogleEmail(data.google?.email || "");
+        setGoogleDriveAccess(Boolean(data.google?.driveAccess));
+      })
+      .catch(() => {
+        setConnectedGoogleEmail("");
+        setGoogleDriveAccess(false);
+      });
+    if (form.google_sheets_config?.sheet_id)
+      void loadSheetTabs(
+        form.id,
+        form.google_sheets_config.sheet_id,
+        form.google_sheets_config.sheet_name,
+      );
   };
 
   const handleSaveSheetSettings = async (e: React.FormEvent) => {
@@ -972,7 +1046,7 @@ export default function AdminFormsPage() {
       {/* Dedicated Google Sheet Settings Modal for Form */}
       {sheetModalForm && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-xl relative text-xs">
+          <div className="bg-white rounded-2xl max-w-lg max-h-[90vh] overflow-y-auto w-full p-6 shadow-xl relative text-xs">
             <button
               onClick={() => setSheetModalForm(null)}
               className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 absolute top-4 right-4"
@@ -1006,6 +1080,33 @@ export default function AdminFormsPage() {
                 />
               </div>
 
+              <div className="space-y-2">
+                <button
+                  type="button"
+                  onClick={() => void selectSheetFromDrive()}
+                  disabled={loadingSheetTabs || !googleDriveAccess}
+                  className="w-full rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-left font-bold text-emerald-800 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {loadingSheetTabs ? "Loading Google Drive…" : "Choose a spreadsheet from my Google account"}
+                </button>
+                {connectedGoogleEmail ? (
+                  <p className="text-[11px] text-slate-500">
+                    Connected Google account: <strong>{connectedGoogleEmail}</strong>
+                    {selectedSheetTitle && <> · Selected: <strong>{selectedSheetTitle}</strong></>}
+                  </p>
+                ) : (
+                  <p className="text-[11px] text-amber-800">
+                    Connect your Google account first. <Link className="font-bold underline" href="/admin/google-integrations">Open Google Integrations</Link>
+                  </p>
+                )}
+                {connectedGoogleEmail && !googleDriveAccess && (
+                  <p className="text-[11px] text-amber-800">
+                    Allow access to files you choose. <a className="font-bold underline" href="/api/auth/google?drive=1">Enable Google Drive access</a>
+                  </p>
+                )}
+                {sheetPickerError && <p role="alert" className="rounded-lg bg-red-50 p-2 text-[11px] text-red-700">{sheetPickerError}</p>}
+              </div>
+
               <div>
                 <label className="block font-semibold text-slate-700 mb-1">
                   Google Spreadsheet URL or Sheet ID *
@@ -1015,7 +1116,11 @@ export default function AdminFormsPage() {
                     type="text"
                     required={sheetEnabled}
                     value={sheetUrl}
-                    onChange={(e) => setSheetUrl(e.target.value)}
+                    onChange={(e) => {
+                      setSheetUrl(e.target.value);
+                      setSelectedSheetTitle("");
+                      setSheetTabs([]);
+                    }}
                     placeholder="https://docs.google.com/spreadsheets/d/1A2B3C... or ID"
                     className="flex-1 px-3 py-2 rounded-xl border border-slate-300 font-mono text-xs"
                   />
@@ -1038,17 +1143,37 @@ export default function AdminFormsPage() {
                 <p className="text-[11px] text-slate-400 mt-1">
                   You can paste the entire Google Sheets URL directly from your browser.
                 </p>
+                <button
+                  type="button"
+                  onClick={() => sheetModalForm && void loadSheetTabs(sheetModalForm.id, sheetUrl)}
+                  disabled={loadingSheetTabs || !sheetUrl.trim()}
+                  className="mt-2 rounded-lg border border-slate-200 px-3 py-1.5 font-semibold text-slate-700 disabled:opacity-50"
+                >
+                  {loadingSheetTabs ? "Loading tabs…" : "Load worksheet tabs"}
+                </button>
               </div>
 
               <div>
                 <label className="block font-semibold text-slate-700 mb-1">Sheet Tab / Worksheet Name</label>
-                <input
-                  type="text"
-                  value={sheetName}
-                  onChange={(e) => setSheetName(e.target.value)}
-                  placeholder="e.g. Sheet1, Registrations, Batch-A"
-                  className="w-full px-3 py-2 rounded-xl border border-slate-300 font-medium"
-                />
+                {sheetTabs.length ? (
+                  <select
+                    required={sheetEnabled}
+                    value={sheetName}
+                    onChange={(e) => setSheetName(e.target.value)}
+                    className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 font-medium"
+                  >
+                    {sheetTabs.map((tab) => <option key={tab} value={tab}>{tab}</option>)}
+                  </select>
+                ) : (
+                  <input
+                    type="text"
+                    required={sheetEnabled}
+                    value={sheetName}
+                    onChange={(e) => setSheetName(e.target.value)}
+                    placeholder="e.g. Sheet1, Registrations, Batch-A"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 font-medium"
+                  />
+                )}
               </div>
 
               <div className="flex items-center gap-2">

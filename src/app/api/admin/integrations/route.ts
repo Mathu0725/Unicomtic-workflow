@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { route, RequestError } from "@/lib/http";
 import { getDb, databaseContext } from "@/lib/data/store";
-import { googleConfig, googleRequest } from "@/lib/google/oauth";
+import { googleConfig, googleRequest, hasDriveAccess } from "@/lib/google/oauth";
 import { googleSheetsService, spreadsheetId } from "@/lib/google/sheets-service";
 import { encrypt } from "@/lib/security/secrets";
 import { storageMode, readDatabase, transaction } from "@/lib/data/repository";
@@ -13,7 +13,7 @@ export const dynamic = "force-dynamic";
 export const GET = route(async () => {
     const db = getDb(), { google, smtp, ...settings } = db.integrations;
     const sheetOverrides = db.customForms.filter(form => form.google_sheets_config?.enabled).map(form => ({ formId: form.id, title: form.title, sheetId: form.google_sheets_config.sheet_id, sheetName: form.google_sheets_config.sheet_name }));
-    return NextResponse.json({ success: true, settings, sheetOverrides, google: google ? { email: google.email, connected_at: google.connected_at } : null, smtp: smtp ? { ...smtp, password: undefined, passwordSaved: Boolean(smtp.password) } : null, oauthConfigured: googleConfig().ready, redirectUri: googleConfig().redirectUri, storageMode: storageMode() });
+    return NextResponse.json({ success: true, settings, sheetOverrides, google: google ? { email: google.email, connected_at: google.connected_at, driveAccess: hasDriveAccess() } : null, smtp: smtp ? { ...smtp, password: undefined, passwordSaved: Boolean(smtp.password) } : null, oauthConfigured: googleConfig().ready, redirectUri: googleConfig().redirectUri, storageMode: storageMode() });
 }, true);
 export const POST = route(async req => {
     const body = await req.json();
@@ -68,3 +68,4 @@ export const POST = route(async req => {
         throw new RequestError("Unknown action.");
     }, { maxConflictRetries: 8 });
 }, true, { database: false });
+
