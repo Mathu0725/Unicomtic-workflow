@@ -3,15 +3,20 @@
 import { useState } from "react";
 import { useLiveData, Notice } from "@/components/live-data";
 import { SRI_LANKA_DISTRICTS, SRI_LANKA_PROVINCES } from "@/lib/constants/sri-lanka-districts";
-import { BarChart3, MapPin, Download, Filter } from "lucide-react";
+import { MapPin } from "lucide-react";
 
 export default function DistrictAnalyticsPage() {
   const [selectedProvince, setSelectedProvince] = useState("All");
+  const [selectedDistrict, setSelectedDistrict] = useState("All");
 
   const { data, error, reload, stale } = useLiveData("/api/admin/stats", 10000);
   const districtData = (data?.districts || []).map((d: any) => ({ ...d, conversionRate: d.registrations ? Math.round(d.applications / d.registrations * 100) : 0 }));
   const filteredData = districtData.filter(
-    (d: any) => selectedProvince === "All" || d.province === selectedProvince
+    (d: any) => (selectedProvince === "All" || d.province === selectedProvince)
+      && (selectedDistrict === "All" || d.district === selectedDistrict)
+  );
+  const districtOptions = SRI_LANKA_DISTRICTS.filter(
+    (district) => selectedProvince === "All" || district.province === selectedProvince
   );
 
   const totalReg = filteredData.reduce((acc: number, d: any) => acc + d.registrations, 0);
@@ -31,10 +36,17 @@ export default function DistrictAnalyticsPage() {
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <select
+            aria-label="Filter by province"
             value={selectedProvince}
-            onChange={(e) => setSelectedProvince(e.target.value)}
+            onChange={(e) => {
+              const province = e.target.value;
+              setSelectedProvince(province);
+              if (province !== "All" && !SRI_LANKA_DISTRICTS.some(
+                (district) => district.name === selectedDistrict && district.province === province
+              )) setSelectedDistrict("All");
+            }}
             className="px-3.5 py-2 rounded-xl border border-slate-300 text-xs bg-white font-medium focus:outline-none"
           >
             <option value="All">All 9 Provinces</option>
@@ -44,6 +56,17 @@ export default function DistrictAnalyticsPage() {
               </option>
             ))}
           </select>
+          <select
+            aria-label="Filter by district"
+            value={selectedDistrict}
+            onChange={(e) => setSelectedDistrict(e.target.value)}
+            className="px-3.5 py-2 rounded-xl border border-slate-300 text-xs bg-white font-medium focus:outline-none"
+          >
+            <option value="All">All Districts</option>
+            {districtOptions.map((district) => (
+              <option key={district.name} value={district.name}>{district.name}</option>
+            ))}
+          </select>
         </div>
       </div>
 
@@ -51,7 +74,7 @@ export default function DistrictAnalyticsPage() {
       {/* Summary Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-          <span className="text-xs font-semibold text-slate-500">Provincial Registrations</span>
+          <span className="text-xs font-semibold text-slate-500">Registrations</span>
           <p className="text-3xl font-extrabold text-slate-900 mt-1">{totalReg}</p>
           <span className="text-xs text-blue-600 font-semibold mt-1 block">In Selected Area</span>
         </div>
@@ -116,3 +139,4 @@ export default function DistrictAnalyticsPage() {
     </div>
   );
 }
+
