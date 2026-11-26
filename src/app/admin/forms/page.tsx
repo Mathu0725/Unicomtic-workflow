@@ -65,6 +65,10 @@ export default function AdminFormsPage() {
   const [googleDriveAccess, setGoogleDriveAccess] = useState(false);
   const [loadingSheetTabs, setLoadingSheetTabs] = useState(false);
   const [sheetPickerError, setSheetPickerError] = useState("");
+  const [sheetChoice, setSheetChoice] = useState<"existing" | "create">("existing");
+  const [newSpreadsheetTitle, setNewSpreadsheetTitle] = useState("");
+  const [creatingSpreadsheet, setCreatingSpreadsheet] = useState(false);
+  const [sheetNotice, setSheetNotice] = useState("");
   const [sheetEnabled, setSheetEnabled] = useState(false);
   const [sheetAutoSync, setSheetAutoSync] = useState(true);
   const [savingSheet, setSavingSheet] = useState(false);
@@ -383,6 +387,42 @@ export default function AdminFormsPage() {
     }
   };
 
+  const createSpreadsheet = async () => {
+    if (!sheetModalForm || creatingSpreadsheet) return;
+    const title = newSpreadsheetTitle.trim();
+    if (!title) {
+      setSheetPickerError("Enter a name for the new spreadsheet.");
+      return;
+    }
+    setCreatingSpreadsheet(true);
+    setSheetPickerError("");
+    setSheetNotice("");
+    try {
+      const response = await apiResponse(`/api/admin/forms/${sheetModalForm.id}/sheets`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "create", title }),
+      });
+      const result = await response.json();
+      if (!result.sheetId || !Array.isArray(result.worksheets) || !result.worksheets.length)
+        throw new Error("Spreadsheet creation was not confirmed. Check Google Drive before creating another spreadsheet.");
+      setSheetUrl(result.sheetId);
+      setSelectedSheetTitle(result.title || title);
+      setSheetTabs(result.worksheets);
+      setSheetName(result.worksheets[0]);
+      setSheetEnabled(true);
+      setSheetChoice("existing");
+      setSheetNotice("Spreadsheet created. Choose a worksheet and save settings to link it to this form.");
+    } catch (error) {
+      const problem = error as { message?: string; status?: number; code?: string };
+      setSheetPickerError(problem.status === 0 || problem.code === "INVALID_RESPONSE"
+        ? "Spreadsheet creation was not confirmed. Check Google Drive before creating another spreadsheet."
+        : problem.message || "Could not create the spreadsheet. Check Google Drive before trying again.");
+    } finally {
+      setCreatingSpreadsheet(false);
+    }
+  };
+
   const openSheetModal = (form: any) => {
     setSheetModalForm(form);
     setSheetEnabled(form.google_sheets_config?.enabled ?? false);
@@ -392,6 +432,9 @@ export default function AdminFormsPage() {
     setSheetTabs([]);
     setSelectedSheetTitle("");
     setSheetPickerError("");
+    setSheetChoice("existing");
+    setNewSpreadsheetTitle(`${form.title} responses`.slice(0, 255));
+    setSheetNotice("");
     void apiResponse("/api/admin/integrations")
       .then((response) => response.json())
       .then((data) => {
@@ -511,6 +554,11 @@ export default function AdminFormsPage() {
   };
 
   const activeIntakes = intakes.filter((intake) => intake.is_active);
+  const sheetDestinationChanged = sheetModalForm && (
+    sheetUrl !== (sheetModalForm.google_sheets_config?.sheet_id || "") ||
+    sheetName !== (sheetModalForm.google_sheets_config?.sheet_name || "Sheet1") ||
+    sheetEnabled !== Boolean(sheetModalForm.google_sheets_config?.enabled)
+  );
 
   return (
     <div className="space-y-6">
@@ -1049,6 +1097,8 @@ export default function AdminFormsPage() {
           <div className="bg-white rounded-2xl max-w-lg max-h-[90vh] overflow-y-auto w-full p-6 shadow-xl relative text-xs">
             <button
               onClick={() => setSheetModalForm(null)}
+              disabled={creatingSpreadsheet}
+              aria-label="Close Google Sheet settings"
               className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 absolute top-4 right-4"
             >
               <X className="w-5 h-5" />
@@ -1081,14 +1131,38 @@ export default function AdminFormsPage() {
               </div>
 
               <div className="space-y-2">
+                <fieldset disabled={creatingSpreadsheet}>
+                  <legend className="mb-2 font-semibold text-slate-700">Spreadsheet destination</legend>
+                  <div className="grid grid-cols-2 gap-2">
+                    <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 p-3 font-semibold text-slate-700">
+                      <input type="radio" name="spreadsheetChoice" checked={sheetChoice === "existing"} onChange={() => { setSheetChoice("existing"); setSheetPickerError(""); }} />
+                      Use existing
+                    </label>
+                    <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 p-3 font-semibold text-slate-700">
+                      <input type="radio" name="spreadsheetChoice" checked={sheetChoice === "create"} onChange={() => { setSheetChoice("create"); setSheetPickerError(""); }} />
+                      Create new
+                    </label>
+                  </div>
+                </fieldset>
+                {sheetChoice === "existing" ? (
                 <button
                   type="button"
                   onClick={() => void selectSheetFromDrive()}
-                  disabled={loadingSheetTabs || !googleDriveAccess}
+                  disabled={loadingSheetTabs || creatingSpreadsheet || !googleDriveAccess}
                   className="w-full rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-left font-bold text-emerald-800 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {loadingSheetTabs ? "Loading Google Drive…" : "Choose a spreadsheet from my Google account"}
                 </button>
+                ) : (
+                  <div className="space-y-2 rounded-xl border border-emerald-100 bg-emerald-50/50 p-3">
+                    <label className="block font-semibold text-slate-700" htmlFor="new-spreadsheet-title">New spreadsheet name</label>
+                    <input id="new-spreadsheet-title" value={newSpreadsheetTitle} onChange={(event) => setNewSpreadsheetTitle(event.target.value)} maxLength={255} disabled={creatingSpreadsheet} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2" />
+                    <button type="button" onClick={() => void createSpreadsheet()} disabled={creatingSpreadsheet || loadingSheetTabs || !connectedGoogleEmail || !newSpreadsheetTitle.trim()} className="rounded-lg bg-emerald-600 px-3 py-2 font-bold text-white disabled:opacity-50">
+                      {creatingSpreadsheet ? "Creating spreadsheet…" : "Create spreadsheet"}
+                    </button>
+                    <p className="text-[11px] text-slate-600">This creates a spreadsheet in the connected Google account. Save settings to link it to this form.</p>
+                  </div>
+                )}
                 {connectedGoogleEmail ? (
                   <p className="text-[11px] text-slate-500">
                     Connected Google account: <strong>{connectedGoogleEmail}</strong>
@@ -1105,6 +1179,7 @@ export default function AdminFormsPage() {
                   </p>
                 )}
                 {sheetPickerError && <p role="alert" className="rounded-lg bg-red-50 p-2 text-[11px] text-red-700">{sheetPickerError}</p>}
+                {sheetNotice && <p role="status" className="rounded-lg bg-emerald-50 p-2 text-[11px] text-emerald-800">{sheetNotice}</p>}
               </div>
 
               <div>
@@ -1199,11 +1274,12 @@ export default function AdminFormsPage() {
                 </p>
               </div>
 
+              {sheetDestinationChanged && <p className="text-[11px] text-slate-600">Save settings before syncing rows to the selected spreadsheet.</p>}
               <div className="pt-2 flex items-center justify-between border-t border-slate-100">
                 <button
                   type="button"
                   onClick={() => handleSyncToSheet(sheetModalForm)}
-                  disabled={syncingSheet || !sheetEnabled || !sheetUrl}
+                  disabled={syncingSheet || creatingSpreadsheet || loadingSheetTabs || !sheetEnabled || !sheetUrl || Boolean(sheetDestinationChanged)}
                   className="px-3.5 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold border border-emerald-200 flex items-center gap-1.5 transition disabled:opacity-50"
                 >
                   {syncingSheet ? (
@@ -1218,13 +1294,14 @@ export default function AdminFormsPage() {
                   <button
                     type="button"
                     onClick={() => setSheetModalForm(null)}
+                    disabled={creatingSpreadsheet}
                     className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 font-bold transition"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
-                    disabled={savingSheet}
+                    disabled={savingSheet || creatingSpreadsheet || loadingSheetTabs}
                     className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-md transition disabled:bg-emerald-300"
                   >
                     {savingSheet ? "Saving..." : "Save Settings"}
