@@ -14,6 +14,9 @@ import { encrypt } from "../../src/lib/security/secrets";
 let dir: string;
 const secret = "scheduler-test-secret-of-at-least-32-characters";
 const request = (method: string, suffix = "", authorized = true) => new NextRequest(`http://localhost/api/cron/process-queue${suffix}`, { method, headers: authorized ? { Authorization: `Bearer ${secret}` } : {} });
+const addJob = async (status: "queued" | "sending" | "sent" | "blocked" = "queued") => transaction(db => {
+    db.outbox.push({ id: "job-1", key: "job-1", type: "sheet", payload: {}, status, attempts: 0, created_at: new Date().toISOString() });
+});
 beforeEach(async () => {
     dir = await mkdtemp(path.join(os.tmpdir(), "tic-scheduler-"));
     vi.stubEnv("DATA_DIR", dir); vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://mock.supabase.co"); vi.stubEnv("SEED_DEMO_DATA", "false"); vi.stubEnv("CRON_SECRET", secret);
@@ -30,7 +33,7 @@ it.each(["GET", "POST"])("refuses unauthenticated %s triggers before dispatch", 
 it.each(["GET", "POST"])("supports authenticated %s and records a durable completed run", async method => {
     const response = await (method === "GET" ? GET : POST)(request(method), undefined);
     expect(response.status).toBe(200); expect(response.headers.get("cache-control")).toContain("no-store");
-    expect(dispatch).toHaveBeenCalledOnce();
+    expect(dispatch).not.toHaveBeenCalled();
     const db = await readDatabase();
     expect(db.queueControl.last_worker_completed_at).toBeGreaterThan(0);
     expect(db.queueControl.worker_lease).toBeUndefined();
@@ -59,6 +62,7 @@ it("reports missing OAuth configuration before starting the scheduler", async ()
     expect(dispatch).not.toHaveBeenCalled();
 });
 it("skips overlapping triggers with a persisted lease and releases it when done", async () => {
+    await addJob();
     let release!: () => void, entered!: () => void;
     const inDispatch = new Promise<void>(resolve => { entered = resolve; });
     dispatch.mockImplementationOnce(async () => { entered(); await new Promise<void>(resolve => { release = resolve; }); return { sent: 1, failed: 0, processed: 1, batches: 1 }; });
@@ -70,12 +74,14 @@ it("skips overlapping triggers with a persisted lease and releases it when done"
     expect((await readDatabase()).queueControl.worker_lease).toBeUndefined();
 });
 it("recovers an expired lease after a crashed process", async () => {
+    await addJob("sending");
     await transaction(db => { db.queueControl.worker_lease = { id: "crashed-worker", expires_at: Date.now() - 1 }; });
     expect(await runScheduledQueue()).toMatchObject({ skipped: false });
     expect(dispatch).toHaveBeenCalledOnce();
     expect((await readDatabase()).queueControl.worker_lease).toBeUndefined();
 });
 it("does not release a newer worker's lease when an older invocation completes", async () => {
+    await addJob();
     dispatch.mockImplementationOnce(async () => {
         await transaction(db => { db.queueControl.worker_lease = { id: "new-owner", expires_at: Date.now() + 180000 }; });
         return { sent: 0, failed: 0, processed: 0, batches: 0 };
@@ -84,6 +90,7 @@ it("does not release a newer worker's lease when an older invocation completes",
     expect((await readDatabase()).queueControl.worker_lease?.id).toBe("new-owner");
 });
 it("keeps only a safe failure code and allows the next scheduled attempt to recover", async () => {
+    await addJob();
     dispatch.mockRejectedValueOnce(new AppError("DATABASE_UNAVAILABLE", "Private provider detail", 503));
     await expect(runScheduledQueue()).rejects.toMatchObject({ code: "DATABASE_UNAVAILABLE" });
     const db = await readDatabase();
@@ -93,6 +100,26 @@ it("keeps only a safe failure code and allows the next scheduled attempt to reco
     await runScheduledQueue();
     expect((await readDatabase()).queueControl.last_worker_error).toBeUndefined();
 });
+it("completes an idle run, clears a stale lease and error, and records worker health", async () => {
+    await addJob("blocked");
+    await transaction(db => {
+        db.queueControl.worker_lease = { id: "expired", expires_at: Date.now() - 1 };
+        db.queueControl.last_worker_error = { code: "PREVIOUS_FAILURE", at: Date.now() - 1000 };
+    });
+    const started = Date.now();
+    expect(await runScheduledQueue()).toEqual({ skipped: false, sent: 0, failed: 0, processed: 0, batches: 0 });
+    expect(dispatch).not.toHaveBeenCalled();
+    const { queueControl } = await readDatabase();
+    expect(queueControl.last_worker_at).toBeGreaterThanOrEqual(started);
+    expect(queueControl.last_worker_completed_at).toBeGreaterThanOrEqual(started);
+    expect(queueControl.worker_lease).toBeUndefined();
+    expect(queueControl.last_worker_error).toBeUndefined();
+});
+it.each(["queued", "sending"] as const)("processes %s jobs instead of taking the idle path", async status => {
+    await addJob(status);
+    await runScheduledQueue();
+    expect(dispatch).toHaveBeenCalledOnce();
+});
 it("queues one reminder per booking/window across repeated triggers", async () => {
     await transaction(db => {
         db.students.push({ id: "student-1", full_name: "<Candidate>", email: "candidate@example.com" } as any);
@@ -101,6 +128,8 @@ it("queues one reminder per booking/window across repeated triggers", async () =
         db.workshopBookings.push({ id: "booking-1", workshop_id: "workshop-1", student_id: "student-1", registration_id: "registration-1", status: "confirmed", created_at: new Date().toISOString() });
     });
     await runScheduledQueue(); await runScheduledQueue();
+    expect(dispatch).toHaveBeenCalledTimes(2);
     const jobs = (await readDatabase()).outbox;
     expect(jobs).toHaveLength(1); expect(jobs[0].payload.html).toContain("&lt;Candidate&gt;");
 });
+
