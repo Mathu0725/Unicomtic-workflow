@@ -141,6 +141,7 @@ export const sheetsConfigSchema = z.object({
   sheet_id: z.string().max(500),
   sheet_name: z.string().min(1).max(100),
   auto_sync: z.boolean(),
+  clean_export: z.boolean().optional(),
   last_synced_at: z.string().nullable().optional(),
 });
 export const googleFormSchema = z.object({

@@ -52,7 +52,7 @@ it("creates a spreadsheet, selects its worksheet, and saves it for the form", as
   fireEvent.click(screen.getByRole("button", { name: "Save Settings" }));
   await waitFor(() => expect(request).toHaveBeenCalledWith("/api/admin/forms/form-1", expect.objectContaining({ method: "PATCH" })));
   const call = request.mock.calls.find(([url, options]) => url === "/api/admin/forms/form-1" && options?.method === "PATCH");
-  expect(JSON.parse(String(call?.[1].body)).google_sheets_config).toMatchObject({ enabled: true, sheet_id: "new-sheet", sheet_name: "Other" });
+  expect(JSON.parse(String(call?.[1].body)).google_sheets_config).toMatchObject({ enabled: true, clean_export: true, sheet_id: "new-sheet", sheet_name: "Other" });
 });
 
 it("retains the existing destination when creation is unconfirmed", async () => {
@@ -75,5 +75,16 @@ it("chooses an existing spreadsheet and inspects its worksheets before saving", 
   await waitFor(() => expect(request).toHaveBeenCalledWith("/api/admin/forms/form-1", expect.objectContaining({ method: "PATCH" })));
   const call = request.mock.calls.find(([url, options]) => url === "/api/admin/forms/form-1" && options?.method === "PATCH");
   expect(JSON.parse(String(call?.[1].body)).google_sheets_config).toMatchObject({ sheet_id: "existing-sheet", sheet_name: "Old tab" });
+});
+
+it("enables clean question-only exports independently for each form", async () => {
+  await openSettings();
+  fireEvent.click(screen.getByLabelText("Only form answers, submission time and status"));
+  expect(screen.getByText(/Choose a separate empty worksheet/)).toBeTruthy();
+  expect((screen.getByRole("button", { name: "Sync Existing Rows Now" }) as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.click(screen.getByRole("button", { name: "Save Settings" }));
+  await waitFor(() => expect(request).toHaveBeenCalledWith("/api/admin/forms/form-1", expect.objectContaining({ method: "PATCH" })));
+  const call = request.mock.calls.find(([url, options]) => url === "/api/admin/forms/form-1" && options?.method === "PATCH");
+  expect(JSON.parse(String(call?.[1].body)).google_sheets_config.clean_export).toBe(true);
 });
 
