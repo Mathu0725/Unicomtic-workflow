@@ -336,6 +336,7 @@ export interface CustomForm {
     sheet_id: string;
     sheet_name: string;
     auto_sync: boolean;
+    clean_export?: boolean;
     last_synced_at?: string;
   };
   email_automation: {
@@ -1446,3 +1447,7 @@ if (process.env.NODE_ENV !== "production") {
 
 export const databaseContext = new AsyncLocalStorage<DatabaseStore>();
 export function getDb() { return databaseContext.getStore() || globalStore; }
+
+
+
+

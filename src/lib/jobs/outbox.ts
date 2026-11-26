@@ -19,6 +19,7 @@ import { workshopBookingSheetRow } from "../workshops/booking-sheet-row";
 import { workshopEmailProblem } from "../workshops/email-policy";
 import { submissionSheetIdentity } from "../google/submission-row";
 import { decisionJobIsCurrent } from "../admissions/decision-notifications";
+import { syncFormResponses } from "../google/form-response-sync";
 export function enqueue(db: DatabaseStore, type: OutboxJob["type"], key: string, payload: Record<string, any>) {
     const existing = db.outbox.find(j => j.key === key);
     if (existing)
@@ -52,8 +53,11 @@ export function queueEmail(payload: SendEmailPayload & {
 }
 export function queueSheet(db: DatabaseStore, sheetId: string, sheetName: string, row: Record<string, any>, sourceId?: string) {
     const legacyKey = `sheet:${sheetId}:${sheetName}:${row.referenceNo}:${JSON.stringify(row)}`;
-    const key = `sheet:${createHash("sha256").update(legacyKey).digest("hex")}`;
-    return db.outbox.find(job => job.key === legacyKey) || enqueue(db, "sheet", key, { sheetId, sheetName, rows: [row], sourceId });
+    const sub = sourceId ? db.formSubmissions.find(item => item.id === sourceId) : undefined;
+    const form = sub ? db.customForms.find(item => item.id === sub.form_id) : undefined;
+    const cleanExport = Boolean(form?.google_sheets_config?.enabled && form.google_sheets_config.clean_export);
+    const key = `sheet:${createHash("sha256").update(cleanExport ? `${legacyKey}:clean-v1` : legacyKey).digest("hex")}`;
+    return (!cleanExport && db.outbox.find(job => job.key === legacyKey)) || enqueue(db, "sheet", key, { sheetId, sheetName, rows: [row], sourceId, ...(cleanExport ? { cleanExport: true } : {}) });
 }
 async function commit<T>(fn: (db: DatabaseStore) => Promise<T> | T): Promise<T> {
     return transaction(fn, { maxConflictRetries: 8 });
@@ -133,7 +137,8 @@ export async function processOutbox(limit = 120, timeBudgetMs = 45000, onlyJobId
                 ));
                 return { jobs: [] as OutboxJob[], waitMs: readyTimes.length ? readyTimes.reduce((min, value) => Math.min(min, value), Infinity) - now : 0 };
             }
-            const candidates = next.type === "sheet" ? db.outbox.filter(j => due(j) && j.type === "sheet" && j.payload.sheetId === next.payload.sheetId && j.payload.sheetName === next.payload.sheetName && j.payload.workshopId === next.payload.workshopId).slice(0, Math.min(100, limit - processed)) : [next];
+            const responseGroup = (job: OutboxJob) => job.payload.cleanExport && job.payload.sourceId ? db.formSubmissions.find(sub => sub.id === job.payload.sourceId)?.form_id || `missing:${job.payload.sourceId}` : "";
+            const candidates = next.type === "sheet" ? db.outbox.filter(j => due(j) && j.type === "sheet" && j.payload.sheetId === next.payload.sheetId && j.payload.sheetName === next.payload.sheetName && j.payload.workshopId === next.payload.workshopId && responseGroup(j) === responseGroup(next)).slice(0, Math.min(100, limit - processed)) : [next];
             const batch: OutboxJob[] = [];
             let bytes = 0;
             for (const candidate of candidates) {
@@ -197,7 +202,14 @@ export async function processOutbox(limit = 120, timeBudgetMs = 45000, onlyJobId
                 return sendEmail({ ...secureCandidateEmail(db, job.payload), ...(attachments.length ? { attachments } : {}), smtpAccountId: job.email_account_id, messageId: `<${job.id}@unicom-tic.local>` } as SendEmailPayload);
             }
             const rows = jobs.flatMap(item => item.payload.rows);
-            const res = job.payload.workshopId ? await googleSheetsService.syncWorkshopBookings(job.payload.sheetId,job.payload.sheetName,job.payload.workshopId,rows) : await googleSheetsService.syncRecords(job.payload.sheetId, "registrations", rows, job.payload.sheetName);
+            let res;
+            if (job.payload.workshopId) res = await googleSheetsService.syncWorkshopBookings(job.payload.sheetId,job.payload.sheetName,job.payload.workshopId,rows);
+            else if (job.payload.cleanExport && job.payload.sourceId) {
+                const submissions = jobs.map(item => db.formSubmissions.find(sub => sub.id === item.payload.sourceId));
+                const form = db.customForms.find(item => item.id === submissions[0]?.form_id);
+                if (!form || submissions.some(sub => !sub || sub.form_id !== form.id)) throw new ProviderError("FORM_RESPONSE_MISSING", "The form or a response is unavailable. Review the form before exporting.", "blocked", 0, "repair_configuration");
+                res = await syncFormResponses(db, form, submissions.filter((sub): sub is NonNullable<typeof sub> => Boolean(sub)), job.payload.sheetId, job.payload.sheetName);
+            } else res = await googleSheetsService.syncRecords(job.payload.sheetId, "registrations", rows, job.payload.sheetName);
             return { success: res.success, error: res.error, provider: "google_sheets", messageId: job.payload.sheetId, uncertain: false, retryAfterMs: res.retryAfterMs, errorCode: res.errorCode, failureKind: res.failureKind, action: res.action };
             });
         } catch (error: any) {
@@ -286,3 +298,6 @@ export async function processOutbox(limit = 120, timeBudgetMs = 45000, onlyJobId
     }
     return { sent, failed, processed, batches };
 }
+
+
+

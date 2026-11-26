@@ -70,6 +70,7 @@ export default function AdminFormsPage() {
   const [creatingSpreadsheet, setCreatingSpreadsheet] = useState(false);
   const [sheetNotice, setSheetNotice] = useState("");
   const [sheetEnabled, setSheetEnabled] = useState(false);
+  const [sheetCleanExport, setSheetCleanExport] = useState(false);
   const [sheetAutoSync, setSheetAutoSync] = useState(true);
   const [savingSheet, setSavingSheet] = useState(false);
   const [syncingSheet, setSyncingSheet] = useState(false);
@@ -411,6 +412,7 @@ export default function AdminFormsPage() {
       setSheetTabs(result.worksheets);
       setSheetName(result.worksheets[0]);
       setSheetEnabled(true);
+      setSheetCleanExport(true);
       setSheetChoice("existing");
       setSheetNotice("Spreadsheet created. Choose a worksheet and save settings to link it to this form.");
     } catch (error) {
@@ -426,6 +428,7 @@ export default function AdminFormsPage() {
   const openSheetModal = (form: any) => {
     setSheetModalForm(form);
     setSheetEnabled(form.google_sheets_config?.enabled ?? false);
+    setSheetCleanExport(Boolean(form.google_sheets_config?.clean_export));
     setSheetUrl(form.google_sheets_config?.sheet_id || "");
     setSheetName(form.google_sheets_config?.sheet_name || "Sheet1");
     setSheetAutoSync(form.google_sheets_config?.auto_sync ?? true);
@@ -471,6 +474,7 @@ export default function AdminFormsPage() {
         body: JSON.stringify({
           google_sheets_config: {
             enabled: sheetEnabled,
+            clean_export: sheetCleanExport,
             sheet_id: sheetId,
             sheet_name: sheetName.trim() || "Sheet1",
             auto_sync: sheetAutoSync,
@@ -557,7 +561,8 @@ export default function AdminFormsPage() {
   const sheetDestinationChanged = sheetModalForm && (
     sheetUrl !== (sheetModalForm.google_sheets_config?.sheet_id || "") ||
     sheetName !== (sheetModalForm.google_sheets_config?.sheet_name || "Sheet1") ||
-    sheetEnabled !== Boolean(sheetModalForm.google_sheets_config?.enabled)
+    sheetEnabled !== Boolean(sheetModalForm.google_sheets_config?.enabled) ||
+    sheetCleanExport !== Boolean(sheetModalForm.google_sheets_config?.clean_export)
   );
 
   return (
@@ -1250,6 +1255,12 @@ export default function AdminFormsPage() {
                   />
                 )}
               </div>
+
+              <div className="flex items-center gap-2">
+                <input type="checkbox" id="sheetCleanExport" checked={sheetCleanExport} onChange={(e) => setSheetCleanExport(e.target.checked)} className="rounded border-slate-300 text-emerald-600 h-4 w-4" />
+                <label htmlFor="sheetCleanExport" className="text-slate-700 font-semibold">Only form answers, submission time and status</label>
+              </div>
+              {sheetCleanExport && <p className="text-[11px] text-slate-600">Choose a separate empty worksheet for this form. Existing sheets remain unchanged. Do not remove the response ID notes used to prevent duplicates.</p>}
 
               <div className="flex items-center gap-2">
                 <input
