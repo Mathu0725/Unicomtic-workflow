@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { route, RequestError } from "@/lib/http";
-import { canAccess, safeEqual, SESSION_COOKIE, signSession, type StaffUser } from "@/lib/security/session";
+import { canAccess, safeEqual, SESSION_COOKIE, SESSION_MAX_AGE_SECONDS, signSession, type StaffUser } from "@/lib/security/session";
 import { readDatabase } from "@/lib/data/repository";
 import { configuredAdministratorEmail, verifyStaffPassword } from "@/lib/security/staff-accounts";
 import { staffHomePath, staffRoleOptions } from "@/lib/security/staff-roles";
@@ -30,6 +30,6 @@ export const POST = route(async (req) => {
         if (target.origin === req.nextUrl.origin && /^\/admin(?:\/|$)/.test(target.pathname) && canAccess(user, target.pathname)) redirectTo = `${target.pathname}${target.search}${target.hash}`;
     }
     const res = NextResponse.json({ success: true, user, redirectTo });
-    res.cookies.set(SESSION_COOKIE, signSession(user), { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax", path: "/", maxAge: 604800 });
+    res.cookies.set(SESSION_COOKIE, signSession(user), { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax", path: "/", maxAge: SESSION_MAX_AGE_SECONDS });
     return res;
 }, false, { database: false, bodyLimit: 8192 });
