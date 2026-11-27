@@ -7,8 +7,11 @@ export type StaffUser = {
     role: string;
 };
 export const SESSION_COOKIE = "unicom_staff_session";
+// New sessions expire after one day. Existing signed sessions keep their
+// original expiration until they expire or the signing key is rotated.
+export const SESSION_MAX_AGE_SECONDS = 24 * 60 * 60;
 export function signSession(user: StaffUser) {
-    const data = Buffer.from(JSON.stringify({ ...user, exp: Date.now() + 7 * 86400000 })).toString("base64url");
+    const data = Buffer.from(JSON.stringify({ ...user, exp: Date.now() + SESSION_MAX_AGE_SECONDS * 1000 })).toString("base64url");
     return `${data}.${createHmac("sha256", appSecret()).update(data).digest("base64url")}`;
 }
 export function getSession(req: NextRequest): StaffUser | null {
