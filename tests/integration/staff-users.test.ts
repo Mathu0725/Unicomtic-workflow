@@ -77,6 +77,7 @@ describe("Staff account creation and sign-in", () => {
     const cookie = response.headers.get("set-cookie")!;
     expect(cookie).toMatch(/HttpOnly/i);
     expect(cookie).toMatch(/SameSite=lax/i);
+    expect(cookie).toMatch(/Max-Age=86400/i);
     const authenticated = request("/api/admin/settings", undefined, undefined, cookie.split(";")[0]);
     const session = getSession(authenticated)!;
     expect(session.role).toBe(role);
