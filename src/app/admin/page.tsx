@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 import { ArrowRight, CalendarDays, FileText, RefreshCw, Users } from "lucide-react";
 import { useLiveData, Notice } from "@/components/live-data";
 
@@ -15,6 +16,11 @@ function formatDate(date: string, options: Intl.DateTimeFormatOptions) {
 
 export default function Dashboard() {
   const { data, error, loading, reload, stale } = useLiveData("/api/admin/stats", 30000);
+  const [refreshing, setRefreshing] = useState(false);
+  const refresh = async () => {
+    setRefreshing(true);
+    try { await reload(); } finally { setRefreshing(false); }
+  };
   const days = (data?.activity?.days || []) as DayActivity[];
   const recent = (data?.activity?.recentApplications || []) as RecentApplication[];
   const workshops = ((data?.workshops || []) as Workshop[]).slice().sort((a, b) => Date.parse(a.start_time) - Date.parse(b.start_time));
@@ -29,14 +35,14 @@ export default function Dashboard() {
   ];
 
   return <div className="space-y-7">
-    <header className="flex flex-wrap items-end justify-between gap-5">
+    <header className="dashboard-heading flex flex-wrap items-end justify-between gap-5 rounded-2xl border border-blue-100 px-5 py-6 sm:px-7 sm:py-7">
       <div><p className="mb-2 text-xs font-bold uppercase tracking-[.17em] text-blue-700">Admissions overview</p><h1 className="text-3xl font-bold text-slate-950 sm:text-[2.15rem]">Admissions at a glance</h1><p className="mt-2 text-sm leading-6 text-slate-600">Registrations, applications and workshop seats in one place.</p></div>
-      <button type="button" onClick={() => void reload()} className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50"><RefreshCw className="h-4 w-4" aria-hidden="true" />Refresh</button>
+      <button type="button" onClick={() => void refresh()} disabled={refreshing} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-blue-200 bg-white px-4 text-sm font-semibold text-blue-800 shadow-sm hover:bg-blue-50 disabled:cursor-wait disabled:opacity-70"><RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} aria-hidden="true" />{refreshing ? "Refreshing…" : "Refresh data"}</button>
     </header>
     <Notice error>{error}</Notice>
     {stale && <p className="text-xs text-amber-800">Showing the last available figures while the connection recovers.</p>}
     <section aria-label="Admissions statistics" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-      {metrics.map(({ label, value, href, icon: Icon, tone }) => <Link key={label} href={href} className="group flex min-h-32 flex-col justify-between rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:border-blue-200 hover:shadow-md"><div className="flex items-start justify-between gap-3"><span className="text-sm font-medium text-slate-600">{label}</span><span className={`rounded-xl p-2.5 ${tone}`}><Icon className="h-4 w-4" aria-hidden="true" /></span></div><div className="flex items-end justify-between"><strong className="text-3xl font-bold tracking-tight text-slate-950" aria-label={`${label}: ${value ?? "unavailable"}`}>{value ?? (loading ? "…" : "—")}</strong><ArrowRight className="h-4 w-4 text-slate-400 group-hover:text-blue-700" aria-hidden="true" /></div></Link>)}
+      {metrics.map(({ label, value, href, icon: Icon, tone }) => <Link key={label} href={href} className="group flex min-h-36 flex-col justify-between rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:border-blue-300 hover:shadow-md"><div className="flex items-start justify-between gap-3"><span className="text-sm font-medium text-slate-600">{label}</span><span className={`rounded-xl p-2.5 ${tone}`}><Icon className="h-4 w-4" aria-hidden="true" /></span></div><div className="flex items-end justify-between gap-2"><strong className="text-3xl font-bold tracking-tight text-slate-950" aria-label={`${label}: ${value ?? (loading ? "loading" : "unavailable")}`}>{value ?? (loading ? "…" : "—")}</strong><span className="inline-flex items-center gap-1 text-xs font-semibold text-blue-700">View <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" aria-hidden="true" /></span></div></Link>)}
     </section>
     <div className="grid gap-5 xl:grid-cols-2">
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6" aria-labelledby="activity-title">

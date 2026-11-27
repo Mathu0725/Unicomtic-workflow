@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { api, Notice } from "@/components/live-data";
 import { ApiError } from "@/lib/client/api";
 import Link from "next/link";
@@ -20,6 +20,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const pathname = usePathname();
   const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const sidebarRef = useRef<HTMLElement>(null);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
   const [currentUser, setCurrentUser] = useState<{ name: string; email: string; role: string }>({
     name: "Dr. Admissions Dean",
     email: "admin@unicomtic.org",
@@ -34,6 +36,30 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     window.addEventListener("admissions:session-expired", expired);
     return () => window.removeEventListener("admissions:session-expired", expired);
   }, [pathname, router]);
+
+  useEffect(() => {
+    if (!sidebarOpen) return;
+    const sidebar = sidebarRef.current;
+    const desktop = window.matchMedia("(min-width: 768px)");
+    if (!sidebar || desktop.matches) return;
+    const focusable = () => Array.from(sidebar.querySelectorAll<HTMLElement>(
+      'a[href], button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])'
+    )).filter(element => element.getClientRects().length > 0);
+    focusable()[0]?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") { event.preventDefault(); setSidebarOpen(false); return; }
+      if (event.key !== "Tab") return;
+      const items = focusable();
+      if (!items.length) { event.preventDefault(); return; }
+      if (!sidebar.contains(document.activeElement)) { event.preventDefault(); items[0].focus(); }
+      else if (event.shiftKey && document.activeElement === items[0]) { event.preventDefault(); items[items.length - 1].focus(); }
+      else if (!event.shiftKey && document.activeElement === items[items.length - 1]) { event.preventDefault(); items[0].focus(); }
+    };
+    const onBreakpointChange = () => { if (desktop.matches) setSidebarOpen(false); };
+    document.addEventListener("keydown", onKeyDown);
+    desktop.addEventListener("change", onBreakpointChange);
+    return () => { document.removeEventListener("keydown", onKeyDown); desktop.removeEventListener("change", onBreakpointChange); if (!desktop.matches) menuButtonRef.current?.focus(); };
+  }, [sidebarOpen]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -92,6 +118,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const settingsSection = getAdminSettingsSection(pathname);
   return (
     <div className="flex h-dvh min-h-0 flex-col overflow-hidden bg-slate-100 md:flex-row">
+      <a href="#admin-page-content" className="admin-skip-link">Skip to main content</a>
       {/* Mobile Header */}
       <div className="md:hidden bg-slate-900 text-white p-4 flex shrink-0 items-center justify-between sticky top-0 z-50">
         <div className="flex items-center space-x-2">
@@ -99,21 +126,25 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           <span className="font-bold text-base">Unicom TIC Admin</span>
         </div>
         <button
+          ref={menuButtonRef}
           type="button"
           aria-label={sidebarOpen ? "Close navigation" : "Open navigation"}
           aria-expanded={sidebarOpen}
           aria-controls="admin-navigation"
           onClick={() => setSidebarOpen(!sidebarOpen)}
-          className="p-1.5 rounded-lg bg-slate-800 text-slate-300"
+          className="flex h-11 w-11 items-center justify-center rounded-lg bg-slate-800 text-slate-300"
         >
           {sidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
         </button>
       </div>
 
+      {sidebarOpen && <button type="button" aria-label="Close navigation" className="fixed inset-0 z-30 bg-slate-950/60 md:hidden" onClick={() => setSidebarOpen(false)} />}
+
       {/* Sidebar */}
       <aside
-        className={`fixed inset-y-0 left-0 z-40 flex h-dvh min-h-0 w-64 shrink-0 flex-col overflow-hidden bg-slate-900 text-slate-300 transition-transform duration-200 ease-in-out md:relative md:h-full md:translate-x-0 ${
-          sidebarOpen ? "translate-x-0" : "-translate-x-full"
+        ref={sidebarRef}
+        className={`fixed inset-y-0 left-0 z-40 flex h-dvh min-h-0 w-64 shrink-0 flex-col overflow-hidden bg-slate-900 text-slate-300 transition-transform duration-200 ease-in-out md:visible md:relative md:h-full md:translate-x-0 ${
+          sidebarOpen ? "visible translate-x-0" : "invisible -translate-x-full"
         }`}
       >
         {/* Brand */}
@@ -127,6 +158,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               </span>
             </div>
           </div>
+          <button type="button" onClick={() => setSidebarOpen(false)} aria-label="Close navigation" className="flex h-11 w-11 items-center justify-center rounded-lg text-slate-200 hover:bg-white/10 md:hidden"><X className="h-5 w-5" aria-hidden="true" /></button>
         </div>
 
         {/* Navigation list */}
@@ -152,6 +184,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               onClick={handleLogout}
               disabled={loggingOut}
               title="Sign Out / Logout"
+              aria-label="Sign out"
               className="p-2 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition flex-shrink-0"
             >
               <LogOut className="w-4 h-4" />
@@ -161,7 +194,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       </aside>
 
       {/* Main Content Area */}
-      <main id="admin-page-content" aria-label="Admin page content" tabIndex={-1} className="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain">
+      <main id="admin-page-content" aria-label="Admin page content" tabIndex={-1} className="admin-content min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain">
         <div className={/^\/admin\/forms\/[^/]+\/builder$/.test(pathname) ? "p-3 sm:p-5" : "p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto"}>
           <Notice error>{sessionError}</Notice>
           {settingsSection && (
