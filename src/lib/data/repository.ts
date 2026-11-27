@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { DatabaseStore, databaseContext } from "./store";
 import { createAdminClient } from "../supabase/admin";
 import { AppError } from "../errors/app-error";
-import { recordEvent } from "../observability/logger";
+import { recordEvent, requestContext } from "../observability/logger";
 type Snapshot = {
     version: number;
     data: DatabaseStore;
@@ -56,8 +56,11 @@ function hydrate(data: DatabaseStore): DatabaseStore {
 }
 async function load(): Promise<Snapshot> {
     if (storageMode() === "supabase") {
+        const readStarted = Date.now();
         const client = createAdminClient();
         const { data, error } = await client.from("platform_state").select("version,data").eq("id", "admissions").maybeSingle();
+        const context = requestContext.getStore();
+        if (context) context.databaseReadMs = (context.databaseReadMs || 0) + Date.now() - readStarted;
         if (error)
             throw new AppError("DATABASE_UNAVAILABLE", "Admissions storage is temporarily unavailable. Please retry with the same submission.", 503, {}, true, "retry");
         if (!data && process.env.NODE_ENV === "production" && process.env.ALLOW_DATABASE_INITIALIZE !== "true") throw new AppError("STORAGE_MISSING", "Admissions records are missing. Restore the database or explicitly authorize first-time initialization.", 503, {}, false, "contact_admissions");
@@ -215,3 +218,4 @@ export async function transaction<T>(fn: (db: DatabaseStore) => Promise<T> | T, 
     }
 }
 export async function readDatabase() { return (await load()).data; }
+

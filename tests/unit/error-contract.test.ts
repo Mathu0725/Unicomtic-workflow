@@ -39,6 +39,15 @@ it("logs only an allowlisted incident envelope even when unsafe fields are suppl
     expect(JSON.stringify(log.mock.calls)).not.toMatch(/private-password|private-user/);
     expect(diagnostics().incidents.some(i => i.code === "TEST_REDACTION")).toBe(true);
 });
+it("samples public campaign latency without logging request or database contents", () => {
+    const log = vi.spyOn(console, "info").mockImplementation(() => {});
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    requestContext.run({ requestId: "safe-reference", route: "/api/campaigns", databaseReadMs: 84 }, () => recordEvent("REQUEST_COMPLETED", { status: 200, durationMs: 120, databaseReadMs: 84, message: "private" } as any));
+    expect(log).toHaveBeenCalledOnce();
+    expect(log.mock.calls[0][0]).toContain('"durationMs":120');
+    expect(log.mock.calls[0][0]).toContain('"databaseReadMs":84');
+    expect(log.mock.calls[0][0]).not.toContain("private");
+});
 it("accepts an empty incoming POST stream for bodyless worker and sync triggers", async () => {
     const trigger = route(async () => NextResponse.json({ success: true }), false, { database: false });
     const incoming = new NextRequest("http://localhost/api/cron/process-queue", { method: "POST", body: new ReadableStream({ start(controller) { controller.close(); } }), duplex: "half" } as any);
@@ -47,3 +56,4 @@ it("accepts an empty incoming POST stream for bodyless worker and sync triggers"
     const empty = new NextRequest("http://localhost/api/test", { method: "POST" });
     expect((await requiresJson(empty, undefined)).status).toBe(400);
 });
+
