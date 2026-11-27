@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { transaction } from "../data/repository";
+import { transaction, tryIdleQueueWorkerTick } from "../data/repository";
 import { processOutbox } from "./outbox";
 import { queueWorkshopAutomatic } from "../workshops/notifications";
 import { AppError } from "../errors/app-error";
@@ -7,6 +7,9 @@ import { recordEvent } from "../observability/logger";
 
 export async function runScheduledQueue() {
     const id = randomUUID(), started = Date.now();
+    const fastPath = await tryIdleQueueWorkerTick();
+    if (fastPath === "already_running") return { skipped: true, reason: "already_running", sent: 0, failed: 0, processed: 0, batches: 0 };
+    if (fastPath === "idle") return { skipped: false, sent: 0, failed: 0, processed: 0, batches: 0 };
     const state = await transaction(db => {
         const now = Date.now();
         if (db.queueControl.worker_lease && db.queueControl.worker_lease.expires_at > now) return "already_running" as const;

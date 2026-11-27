@@ -215,3 +215,15 @@ export async function transaction<T>(fn: (db: DatabaseStore) => Promise<T> | T, 
     }
 }
 export async function readDatabase() { return (await load()).data; }
+
+
+/**
+ * Check an idle scheduled worker tick inside Postgres to avoid transferring the
+ * full admissions snapshot when there is no work to process.
+ */
+export async function tryIdleQueueWorkerTick(): Promise<"idle" | "already_running" | "needs_processing" | "unsupported"> {
+    if (storageMode() !== "supabase") return "unsupported";
+    const { data, error } = await createAdminClient().rpc("try_idle_queue_worker_tick");
+    if (error) return "unsupported";
+    return data === "idle" || data === "already_running" || data === "needs_processing" ? data : "unsupported";
+}

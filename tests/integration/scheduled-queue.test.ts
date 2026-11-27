@@ -4,7 +4,9 @@ import os from "node:os";
 import path from "node:path";
 import { NextRequest } from "next/server";
 const dispatch = vi.hoisted(() => vi.fn());
+const idleTick = vi.hoisted(() => vi.fn());
 vi.mock("../../src/lib/jobs/outbox", async importOriginal => ({ ...await importOriginal<object>(), processOutbox: dispatch }));
+vi.mock("../../src/lib/supabase/admin", () => ({ createAdminClient: () => ({ rpc: idleTick }) }));
 import { transaction, readDatabase } from "../../src/lib/data/repository";
 import { runScheduledQueue } from "../../src/lib/jobs/scheduled-queue";
 import { GET, POST, HEAD } from "../../src/app/api/cron/process-queue/route";
@@ -21,6 +23,7 @@ beforeEach(async () => {
     dir = await mkdtemp(path.join(os.tmpdir(), "tic-scheduler-"));
     vi.stubEnv("DATA_DIR", dir); vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://mock.supabase.co"); vi.stubEnv("SEED_DEMO_DATA", "false"); vi.stubEnv("CRON_SECRET", secret);
     dispatch.mockReset(); dispatch.mockResolvedValue({ sent: 0, failed: 0, processed: 0, batches: 0 });
+    idleTick.mockReset(); idleTick.mockResolvedValue({ data: null, error: { message: "unsupported" } });
     await transaction(() => {});
 });
 afterEach(async () => { vi.unstubAllEnvs(); await rm(dir, { recursive: true, force: true }); });
@@ -114,6 +117,20 @@ it("completes an idle run, clears a stale lease and error, and records worker he
     expect(queueControl.last_worker_completed_at).toBeGreaterThanOrEqual(started);
     expect(queueControl.worker_lease).toBeUndefined();
     expect(queueControl.last_worker_error).toBeUndefined();
+});
+it("handles idle Supabase ticks with the small database RPC", async () => {
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://project.supabase.co");
+    idleTick.mockResolvedValueOnce({ data: "idle", error: null });
+    expect(await runScheduledQueue()).toEqual({ skipped: false, sent: 0, failed: 0, processed: 0, batches: 0 });
+    expect(idleTick).toHaveBeenCalledOnce();
+    expect(idleTick).toHaveBeenCalledWith("try_idle_queue_worker_tick");
+    expect(dispatch).not.toHaveBeenCalled();
+});
+it("skips a Supabase tick when another worker owns the lease", async () => {
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://project.supabase.co");
+    idleTick.mockResolvedValueOnce({ data: "already_running", error: null });
+    expect(await runScheduledQueue()).toMatchObject({ skipped: true, reason: "already_running" });
+    expect(dispatch).not.toHaveBeenCalled();
 });
 it.each(["queued", "sending"] as const)("processes %s jobs instead of taking the idle path", async status => {
     await addJob(status);
