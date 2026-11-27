@@ -2,6 +2,7 @@
 import { apiResponse } from "@/lib/client/api";
 import { chooseGoogleSpreadsheet } from "@/lib/client/google-spreadsheet-picker";
 import { Notice as RequestNotice } from "@/components/live-data";
+import FormQrDownload from "@/components/form-qr-download";
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
@@ -775,6 +776,8 @@ export default function AdminFormsPage() {
                     </Link>
                   </div>
 
+                  <FormQrDownload key={`${form.id}:${form.slug}`} slug={form.slug} title={form.title} active={form.is_active} />
+
                   {/* Integration Badges */}
                   <div className="space-y-2 mb-4">
                     <div className="grid grid-cols-1 gap-2 text-xs">
@@ -1326,4 +1329,3 @@ export default function AdminFormsPage() {
     </div>
   );
 }
-
