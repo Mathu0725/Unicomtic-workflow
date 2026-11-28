@@ -13,3 +13,5 @@ docs/validation/*.jpg
 docs/validation/*.jpeg
 docs/validation/*.png
 docs/validation/*.webp
+README.md
+public/logo.png

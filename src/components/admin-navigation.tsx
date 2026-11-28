@@ -20,6 +20,7 @@ const navigationItems: NavigationItem[] = [
     children: [
       { name: "Registrations", href: "/admin/registrations", icon: Users },
       { name: "Applications", href: "/admin/applications", icon: FileText },
+      { name: "Workshop bookings", href: "/admin/workshop-bookings", icon: Calendar },
       { name: "District Analytics", href: "/admin/analytics", icon: BarChart3 },
     ],
   },
@@ -84,19 +85,20 @@ export default function AdminNavigation({ pathname, role, onNavigate }: {
     return (
       <Link href={item.href} onClick={onNavigate}
         aria-current={active ? (pathname === item.href ? "page" : "location") : undefined}
-        className={`flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-xs font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-400 ${
-          active ? "bg-blue-600 font-semibold text-white" : "text-slate-300 hover:bg-slate-800 hover:text-white"
+        className={`group flex min-h-10 items-center gap-3 rounded-xl px-3 py-2.5 text-[13px] font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-300 ${
+          active ? "bg-white/[.15] font-semibold text-white shadow-sm ring-1 ring-white/10" : "text-slate-300 hover:bg-white/[.08] hover:text-white"
         }`}
       >
-        <Icon aria-hidden="true" className={`h-4 w-4 shrink-0 ${active ? "text-white" : "text-slate-400"}`} />
+        <Icon aria-hidden="true" className={`h-[18px] w-[18px] shrink-0 ${active ? "text-blue-200" : "text-slate-400 group-hover:text-blue-200"}`} />
         <span className="truncate">{item.name}</span>
       </Link>
     );
   };
 
   return (
-    <nav id="admin-navigation" aria-label="Admin navigation" className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 py-4">
-      <ul className="space-y-1">
+    <nav id="admin-navigation" aria-label="Admin navigation" className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-5">
+      <p className="mb-3 px-3 text-[10px] font-bold uppercase tracking-[.18em] text-slate-400">Navigate</p>
+      <ul className="space-y-1.5">
         {navigationItems.map(item => {
           if (!("children" in item)) {
             return canShowLink(item.href, role) ? <li key={item.href}>{renderLink(item)}</li> : null;
@@ -110,16 +112,15 @@ export default function AdminNavigation({ pathname, role, onNavigate }: {
             <li key={item.id}>
               <button type="button" aria-expanded={expanded} aria-controls={`admin-nav-${item.id}`}
                 onClick={() => setExpandedGroupId(expanded ? null : item.id)}
-                className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-xs font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-400 ${
-                  active ? "bg-slate-800 font-semibold text-white" : "text-slate-300 hover:bg-slate-800 hover:text-white"
+                className={`flex min-h-10 w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-[13px] font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-300 ${
+                  active ? "bg-white/[.08] font-semibold text-white" : "text-slate-300 hover:bg-white/[.08] hover:text-white"
                 }`}
               >
-                <Icon aria-hidden="true" className={`h-4 w-4 shrink-0 ${active ? "text-blue-400" : "text-slate-400"}`} />
+                <Icon aria-hidden="true" className={`h-[18px] w-[18px] shrink-0 ${active ? "text-blue-200" : "text-slate-400"}`} />
                 <span className="min-w-0 flex-1 truncate">{item.name}</span>
-                <span aria-hidden="true" className="rounded bg-slate-700/60 px-1.5 py-0.5 text-[10px] text-slate-400">{children.length}</span>
-                <ChevronRight aria-hidden="true" className={`h-3.5 w-3.5 shrink-0 text-slate-400 transition-transform ${expanded ? "rotate-90" : ""}`} />
+                <ChevronRight aria-hidden="true" className={`h-4 w-4 shrink-0 text-slate-400 transition-transform ${expanded ? "rotate-90" : ""}`} />
               </button>
-              <ul id={`admin-nav-${item.id}`} hidden={!expanded} className="my-1 ml-5 space-y-0.5 border-l border-slate-700 pl-2">
+              <ul id={`admin-nav-${item.id}`} hidden={!expanded} className="my-1.5 ml-5 space-y-1 border-l border-white/15 pl-3">
                 {children.map(child => <li key={child.href}>{renderLink(child)}</li>)}
               </ul>
             </li>

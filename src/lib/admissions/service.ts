@@ -4,6 +4,7 @@ import { getProvinceForDistrict, SRI_LANKA_DISTRICTS } from "../constants/sri-la
 import { nicRegex, phoneRegex } from "../validations/registration";
 import { RequestError } from "../http";
 import { enqueue, queueSheet } from "../jobs/outbox";
+import { submissionSheetRow } from "../google/submission-row";
 import { renderEmailTemplate } from "../email/template-engine";
 import { formSheetTarget } from "../google/sheet-target";
 import { documentAnswer, documentUrl, type DocumentUpload } from "../documents/receipts";
@@ -15,6 +16,7 @@ import { extraAnswerProblem, formAvailabilityProblem, uniqueAnswer, visibleFormF
 import { queueWorkshopBooking } from "../workshops/sheet-sync";
 import { workshopOptions } from "../workshops/policy";
 import { queueWorkshopConfirmation } from "../workshops/notifications";
+import { workshopConfirmation } from "../workshops/confirmation";
 import type { WorkshopBooking } from "../data/types";
 export const escaped = (value: any) => String(value ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
 export const normalizeEmail = (value: any) => String(value || "").trim().toLowerCase();
@@ -101,13 +103,11 @@ export function bookWorkshop(workshopId: string | undefined, student: Student, r
     const booking: WorkshopBooking = { id: randomUUID(), workshop_id: workshopId, student_id: student.id, registration_id: reg.id, status: "confirmed", created_at: now() };
     db.workshopBookings.push(booking);
     audit("WORKSHOP_BOOKED", "workshop_bookings", booking.id, { workshopId, registrationId: reg.id });
-    queueWorkshopBooking(db,booking.id);
     queueWorkshopConfirmation(db, booking);
+    queueWorkshopBooking(db,booking.id);
     return booking;
 }
-export function submissionSheetRow(student: Student, reg: Registration, app?: Application, sub?: FormSubmission) {
-    return { ...(sub?.data || {}), referenceNo: sub?.reference_no || app?.application_no || reg.reference_no, registrationRef: reg.reference_no, fullName: student.full_name, email: student.email, phone: student.phone, nic: student.nic, district: student.district, status: app?.status || reg.status, createdAt: sub?.created_at || app?.created_at || reg.created_at };
-}
+export { submissionSheetRow } from "../google/submission-row";
 export function notifySubmission(student: Student, reg: Registration, app?: Application, sub?: FormSubmission, form?: CustomForm) {
     const db = getDb(), ref = sub?.reference_no || app?.application_no || reg.reference_no;
     const trackingUrl = `${(process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").replace(/\/$/, "")}/status?ref=${encodeURIComponent(reg.reference_no)}`;
@@ -128,7 +128,9 @@ export function notifySubmission(student: Student, reg: Registration, app?: Appl
         }
         return job;
     };
-    if (!form || (form.email_automation.enabled && form.email_automation.send_applicant_email)) {
+    const hasWorkshopConfirmation = form?.type === "workshop_rsvp" && sub?.workshop_id && form.workshop_config?.send_form_receipt !== true && db.workshops.some(w => w.id === sub.workshop_id && w.confirmation_enabled !== false) &&
+        db.workshopBookings.some(booking => booking.workshop_id === sub.workshop_id && booking.student_id === student.id && booking.status === "confirmed" && db.outbox.some(job => job.key === `booking:${booking.id}`));
+    if (!hasWorkshopConfirmation && (!form || (form.email_automation.enabled && form.email_automation.send_applicant_email))) {
         const selectedTemplate = form?.email_automation.applicant_template;
         const usesFormTemplate = Boolean(form?.email_automation.enabled && (!selectedTemplate || selectedTemplate === "form"));
         const receipt = renderNotification(db, selectedTemplate && selectedTemplate !== "form" ? selectedTemplate : templateId, vars, trackingUrl);
@@ -145,7 +147,7 @@ export function notifySubmission(student: Student, reg: Registration, app?: Appl
         }
         if (!problem && !app && reg.status === "invited" && (!form || invitationForm))
             html += `<p><a href="${escaped((process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000") + (invitationForm ? "/form/" + invitationForm.slug : "/apply?ref=" + reg.reference_no))}">${escaped(savedTemplate(db, "application_invitation").actionLabel || "Complete your application")}</a></p>`;
-        queueMessage(`submission:${sub?.id || app?.id || reg.id}:applicant`, { to: student.email, toName: student.full_name, subject: problem ? "Template needs review" : subject, html: problem ? "" : html, smtpAccountId: form?.email_automation.applicant_account_id, fallbackSmtpAccountId: form?.email_automation.applicant_fallback_account_id, templateId: usesFormTemplate ? `form:${form!.id}:applicant` : receipt.templateId, templateVersion: usesFormTemplate ? form!.updated_at : receipt.templateVersion, sourceId: sub?.id, formId: form?.id, notificationEvent: "submission_confirmation", candidateContext }, problem);
+        queueMessage(`submission:${sub?.id || app?.id || reg.id}:applicant`, { to: student.email, toName: student.full_name, attachments: usesFormTemplate ? [] : receipt.attachments, subject: problem ? "Template needs review" : subject, html: problem ? "" : html, smtpAccountId: form?.email_automation.applicant_account_id, fallbackSmtpAccountId: form?.email_automation.applicant_fallback_account_id, templateId: usesFormTemplate ? `form:${form!.id}:applicant` : receipt.templateId, templateVersion: usesFormTemplate ? form!.updated_at : receipt.templateVersion, sourceId: sub?.id, formId: form?.id, notificationEvent: "submission_confirmation", candidateContext }, problem);
     }
     const recipients = new Set((!form || form.email_automation.enabled && form.email_automation.send_admin_notification ? [db.integrations.admin_notification_email || db.integrations.google?.email, ...(form?.email_automation.admin_emails || [])] : []).filter(Boolean).map(email => normalizeEmail(email)));
     if (recipients.size) {
@@ -240,7 +242,9 @@ export function submitCustomForm(form: CustomForm, input: Record<string, any>, o
     if (booking) {
         booking.source_submission_ids = [...new Set([...(booking.source_submission_ids || []), submission.id])];
         const selected = db.workshops.find(w => w.id === booking.workshop_id)!;
-        submission.workshop_snapshot = { title: selected.title, start_time: selected.start_time, venue: selected.venue };
+        submission.workshop_snapshot = workshopConfirmation(selected);
+        const confirmation = db.outbox.find(job => job.key === `booking:${booking.id}`);
+        if (form.type === "workshop_rsvp" && confirmation?.status === "sent") submission.email_sent = true;
         queueWorkshopBooking(db, booking.id);
     }
     for (const [fieldId, upload] of documents) {
@@ -249,5 +253,6 @@ export function submitCustomForm(form: CustomForm, input: Record<string, any>, o
     }
     form.submissions_count = db.formSubmissions.filter(s => s.form_id === form.id).length;
     notifySubmission(student, reg, app, submission, form);
+    if (booking) queueWorkshopBooking(db, booking.id);
     return { submission, trackingReference: reg.reference_no, duplicate: false };
 }

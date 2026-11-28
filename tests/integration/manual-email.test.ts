@@ -11,6 +11,23 @@ import { GET, POST } from "../../src/app/api/admin/email/manual/route";
 import { POST as preview } from "../../src/app/api/admin/email/manual/preview/route";
 import { GET as directoryGet } from "../../src/app/api/admin/email/candidates/route";
 import { processOutbox } from "../../src/lib/jobs/outbox";
+import { savedTemplate } from "../../src/lib/email/notification-templates";
+
+it("persists shared attachments once and delivers the original bytes after queue reload", async () => {
+  const attachment = { filename: "contract.pdf", contentType: "application/pdf", content: Buffer.from("%PDF-1.7\ncontract").toString("base64") };
+  const body = input({ subject: "Hello {{name}}", body: "Hello {{name}}", attachments: [attachment], directRecipients: ["other@example.com"], confirmRecipientCount: 2 });
+  const reviewed = await preview(request("/api/admin/email/manual/preview", body), undefined);
+  const review = await reviewed.json();
+  expect(review.attachments).toEqual([{ filename: "contract.pdf", contentType: "application/pdf", bytes: Buffer.from(attachment.content, "base64").length }]);
+  expect(JSON.stringify(review)).not.toContain(attachment.content);
+  expect((await POST(request("/api/admin/email/manual", body), undefined)).status).toBe(200);
+  const db = await readDatabase();
+  expect(Object.keys(db.emailAttachmentFiles)).toHaveLength(1);
+  expect(db.outbox.filter(job => job.payload.manualBatchId).every(job => job.payload.attachmentIds.length === 1 && !job.payload.attachments)).toBe(true);
+  await processOutbox();
+  expect(send).toHaveBeenCalledTimes(2);
+  for (const [message] of send.mock.calls) expect(message.attachments).toEqual([attachment]);
+});
 let directory: string;
 const request = (
   url: string,
@@ -160,6 +177,39 @@ it("previews personalized content without jobs and sends a single candidate thro
   await processOutbox();
   expect(send).toHaveBeenCalledTimes(1);
   expect((await readDatabase()).outbox[0].status).toBe("sent");
+});
+it("offers a registration application invitation with the matching intake's open form link", async () => {
+  vi.stubEnv("NEXT_PUBLIC_APP_URL", "https://uticx.com");
+  await transaction((db) => {
+    db.customForms = [
+      {
+        ...db.customForms[0],
+        id: "application-form",
+        slug: "tic-2027-application",
+        type: "application",
+        application_mode: "open",
+        campaign_id: "camp-2025",
+        is_active: true,
+        starts_at: undefined,
+        closes_at: undefined,
+        submission_limit: undefined,
+        submissions_count: 0,
+      },
+    ];
+  });
+  const template = savedTemplate(await readDatabase(), "application_invitation");
+  const response = await preview(
+    request("/api/admin/email/manual/preview", input({
+      templateId: "application_invitation",
+      subject: template.subject,
+      body: template.body,
+    })),
+    {},
+  );
+  expect(response.status).toBe(200);
+  expect((await response.json()).previews[0].text).toContain(
+    "https://uticx.com/form/tic-2027-application",
+  );
 });
 it("requires the unique recipient count, deduplicates mixed candidate/direct addresses and isolates messages", async () => {
   const body = input({

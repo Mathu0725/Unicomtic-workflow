@@ -71,7 +71,7 @@ function selectedTemplate(db: DatabaseStore, form: CustomForm, id: FormCampaignI
   if (id === "form_applicant") return { subject: form.email_automation.applicant_subject, body: form.email_automation.applicant_body_html, html: true, id: `form:${form.id}:applicant`, version: form.updated_at };
   if (id.startsWith("custom:")) {
     const saved = db.customEmailTemplates.find(item => item.id === id.slice(7));
-    if (!saved || !saved.is_active || saved.form_id && saved.form_id !== form.id) throw new RequestError("This reusable template is unavailable for the selected form.", 409);
+    if (!saved || !saved.is_active || saved.purpose === "workshop" || saved.form_id && saved.form_id !== form.id) throw new RequestError("This reusable template is unavailable for the selected form.", 409);
     return { subject: saved.subject, body: saved.body_html, html: true, id, version: saved.version };
   }
   if (!manualTemplateIds.some(item => item === id)) throw new RequestError("Choose an available template.");

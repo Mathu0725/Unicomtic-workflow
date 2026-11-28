@@ -31,13 +31,14 @@ Serverless hosts require Supabase. A dedicated server with persistent disk can e
 
 ## 2. Create the Google OAuth application
 
-1. Open [Google Cloud Console](https://console.cloud.google.com/), create/select a project, and enable **Gmail API** and **Google Sheets API**.
+1. Open [Google Cloud Console](https://console.cloud.google.com/), create/select a project, and enable **Gmail API**, **Google Sheets API** and **Google Picker API**.
 2. In Google Auth Platform, configure app branding/contact information. For a personal Gmail account select **External** audience.
 3. While the app is in Testing, add your admissions Gmail as a test user. Request `openid`, `email`, `profile`, `https://www.googleapis.com/auth/gmail.send` and `https://www.googleapis.com/auth/spreadsheets`.
 4. Create an **OAuth client ID → Web application**. Add this authorized redirect URI exactly:
    `http://localhost:3000/api/auth/google/callback`
 5. For deployment add `https://YOUR-PORTAL-DOMAIN/api/auth/google/callback` and set NEXT_PUBLIC_APP_URL to that origin before rebuilding/restarting.
-6. Copy the client ID and secret to the server environment, then restart the app.
+6. Create an API key for Google Picker. Restrict it to the portal website origin and `https://docs.google.com/*`, and restrict its APIs to Google Picker API (plus Google Drive API if used directly). Find the Google Cloud project number under **IAM & Admin → Settings**.
+7. Copy the OAuth client ID and secret, Picker API key and project number to the server environment as `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_PICKER_API_KEY` and `GOOGLE_CLOUD_PROJECT_NUMBER`, then restart the app.
 
 Google's [web-server OAuth guide](https://developers.google.com/identity/protocols/oauth2/web-server) describes offline access and state validation. For External apps in Testing, refresh tokens for Gmail/Sheets scopes generally expire after seven days; move the consent app to Production for ongoing use and complete verification if Google requires it. See [token expiration](https://developers.google.com/identity/protocols/oauth2#expiration).
 
@@ -46,14 +47,14 @@ Google's [web-server OAuth guide](https://developers.google.com/identity/protoco
 Staff sign in to the portal with their configured email and password. Google authorization is available only inside the authenticated **Google Integrations** page and is used for Gmail/Sheets access. Connecting a Google account never creates a staff session or grants that Google account portal access.
 
 1. Sign in using ADMIN_EMAIL and ADMIN_PASSWORD.
-2. Open **Google Integrations → Connect Google**. Select your admissions Gmail and grant both permissions.
+2. Open **Google Integrations → Connect Google**. Select your admissions Gmail and grant the Gmail and Sheets permissions. In a form's separate spreadsheet settings, choose **Enable Drive access** once to allow the portal to open the Google Picker. That permission is limited to Drive files you select; it does not give the portal broad access to every file.
 3. Click **Create admissions spreadsheet** for a new Google spreadsheet with Registrations and Applications tabs, or paste existing spreadsheet URLs/IDs and save.
 4. Set the admissions notification recipient. Choose **Connected Gmail account**, then save connections.
 5. Open **Email Center** and send a test to your own email. Inspect its job status and provider message ID.
 
 The Sheets API writes actual values. Column A is `referenceNo`; retries update existing references instead of appending duplicate rows. Use a dedicated portal-export tab. Per-form spreadsheet overrides are available in Forms Studio. Disabling a form's auto-sync stops immediate writes for that override; manual sync is still available. A failed API call never marks a submission synced.
 
-A form's enabled separate-sheet setting takes priority over the shared admissions spreadsheet. Google Integrations lists those overrides. Turn the separate-sheet setting off in Builder to inherit the shared spreadsheet. The form's Responses page shows its current destination and provides an Open Sheet link. Use **Sync to Google Sheet** there to copy existing responses after changing destinations; new responses use the current destination automatically. The synced count on that page refers to the current sheet, rather than a previous destination.
+A form's enabled separate-sheet setting takes priority over the shared admissions spreadsheet. In Builder, choose a spreadsheet from Google Drive, select one of its worksheet tabs, and save the form. Google Integrations lists those overrides. Turn the separate-sheet setting off in Builder to inherit the shared spreadsheet. The form's Responses page shows its current destination and provides an Open Sheet link. Use **Sync to Google Sheet** there to copy existing responses after changing destinations; new responses use the current destination automatically. The synced count on that page refers to the current sheet, rather than a previous destination.
 
 See Google's [Sheets append reference](https://developers.google.com/workspace/sheets/api/reference/rest/v4/spreadsheets.values/append) and [Gmail sending guide](https://developers.google.com/workspace/gmail/api/guides/sending).
 

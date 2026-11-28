@@ -4,8 +4,9 @@ import type { CustomEmailTemplate, DatabaseStore } from "../data/store";
 import { RequestError } from "../http";
 import { htmlEmailText, templateProblem } from "./template-catalog";
 import { sanitizeEmailHtml } from "./sanitize";
+import { workshopTemplateVariables } from "../workshops/confirmation";
 
-const content = { title: z.string().trim().min(1).max(120), formId: z.string().max(128).default(""), subject: z.string().trim().min(1).max(250), bodyHtml: z.string().trim().min(1).max(12000) };
+const content = { title: z.string().trim().min(1).max(120), formId: z.string().max(128).default(""), purpose: z.enum(["general", "workshop"]).optional(), actionLabel: z.string().trim().max(80).optional(), subject: z.string().trim().min(1).max(250), bodyHtml: z.string().trim().min(1).max(12000) };
 export const reusableTemplateAction = z.discriminatedUnion("action", [
   z.object({ action: z.literal("create"), ...content }).strict(),
   z.object({ action: z.literal("update"), id: z.string().uuid(), expectedVersion: z.number().int().min(1), ...content }).strict(),
@@ -21,9 +22,10 @@ export function templateAllowedVariables(db: DatabaseStore, formId?: string) {
   if (formId && !form) throw new RequestError("Select an existing form.");
   return [...new Set([...commonVariables, ...(form?.fields || []).filter(field => !["document", "file", "terms", "section"].includes(field.type)).map(field => field.id)])];
 }
-function checkedContent(db: DatabaseStore, input: { formId: string; subject: string; bodyHtml: string }) {
+function checkedContent(db: DatabaseStore, input: { formId: string; subject: string; bodyHtml: string; purpose?: string }) {
+  if (input.purpose === "workshop" && input.formId) throw new RequestError("Workshop templates are shared by selected workshops. Clear the form restriction.");
   const html = sanitizeEmailHtml(input.bodyHtml);
-  const problem = templateProblem({ subject: input.subject, body: html }, templateAllowedVariables(db, input.formId));
+  const problem = templateProblem({ subject: input.subject, body: html }, input.purpose === "workshop" ? workshopTemplateVariables : templateAllowedVariables(db, input.formId));
   if (problem) throw new RequestError(problem);
   if (!htmlEmailText(html).trim()) throw new RequestError("Enter visible email message content.");
   return html;
@@ -39,8 +41,12 @@ export function changeReusableTemplate(db: DatabaseStore, input: ReusableTemplat
     const formId = input.action === "create" ? input.formId : source?.form_id || "";
     const subject = input.action === "create" ? input.subject : source!.subject;
     const bodyHtml = input.action === "create" ? input.bodyHtml : source!.body_html;
-    const html = checkedContent(db, { formId, subject, bodyHtml });
+    const purpose = input.action === "create" ? input.purpose : source?.purpose || "general";
+    const actionLabel = input.action === "create" ? input.actionLabel : source?.action_label || "Open in Google Maps";
+    const html = checkedContent(db, { formId, subject, bodyHtml, purpose });
     template = { id: randomUUID(), title: input.action === "create" ? input.title : `${source!.title} copy`.slice(0, 120), form_id: formId || undefined, subject, body_html: html, is_active: true, version: 1, created_at: now, updated_at: now, updated_by: actor, revisions: [{ version: 1, subject, body_html: html, updated_at: now, updated_by: actor }] };
+    template.purpose = purpose;
+    template.action_label = actionLabel;
     db.customEmailTemplates.push(template);
   } else {
     template = existing!;
@@ -51,6 +57,8 @@ export function changeReusableTemplate(db: DatabaseStore, input: ReusableTemplat
       template.form_id = input.formId || undefined;
       template.subject = input.subject;
       template.body_html = html;
+      template.purpose = input.purpose;
+      template.action_label = input.actionLabel;
     } else if (input.action === "archive") {
       if (template.is_active) { template.is_active = false; template.archived_at = now; }
     } else {

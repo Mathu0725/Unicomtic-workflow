@@ -60,6 +60,10 @@ async function burst(name, requests) {
     metrics(name, results, performance.now() - start);
     return results;
 }
+async function publishForm(form) {
+    const result = await api(`/api/admin/forms/${form.id}`, "PATCH", { is_active: true });
+    assert.equal(result.response.status, 200, result.data.message);
+}
 try {
     const deadline = Date.now() + 90000;
     while (true) {
@@ -76,6 +80,7 @@ try {
     await api("/api/admin/integrations", "POST", { action: "save", email_provider: "gmail", admin_notification_email: "staff@example.com", registration_sheet_id: "load-test-sheet", application_sheet_id: "load-test-sheet" });
     const formResult = await api("/api/admin/forms", "POST", { title: "Load test registrations", type: "registration", fields });
     assert.equal(formResult.response.status, 200);
+    await publishForm(formResult.data.form);
     const registrationUrl = `/api/forms/${formResult.data.form.slug}`;
     await api(registrationUrl, "POST", { data: {} }); // Compile and validate before measuring.
     await api("/api/admin/stats");
@@ -110,16 +115,20 @@ try {
     assert(duplicates.every(r => r.status === 409));
 
     const starts = new Date(Date.now() + 5 * 86400000);
-    const workshop = await api("/api/admin/workshops", "POST", { campaignId: "camp-2025", title: "Load test limited workshop", venue: "Test campus", address: "Test campus address", startTime: starts.toISOString(), endTime: new Date(+starts + 3600000).toISOString(), capacity: 25, daysBeforeReminders: [3, 1] });
+    const workshop = await api("/api/admin/workshops", "POST", { campaignId: "camp-2025", title: "Load test limited workshop", venue: "Test campus", address: "Test campus address", startTime: starts.toISOString(), endTime: new Date(+starts + 3600000).toISOString(), capacity: 25, daysBeforeReminders: [3, 1] }, randomUUID());
     assert.equal(workshop.response.status, 200, workshop.data.message);
     const workshopId = workshop.data.workshop.id;
     const workshopForm = await api("/api/admin/forms", "POST", { title: "Load test workshop booking", type: "registration", fields, workshop_config: { enabled: true, required: true, workshop_ids: [workshopId] } });
+    assert.equal(workshopForm.response.status, 200, workshopForm.data.message);
+    await publishForm(workshopForm.data.form);
     const workshopUrl = `/api/forms/${workshopForm.data.form.slug}`;
     const bookings = await burst("100 contenders for 25 workshop seats", Array.from({ length: 100 }, (_, i) => [workshopUrl, "POST", { data: person(concurrency + 100 + i), workshopId }, randomUUID()]));
     assert.equal(bookings.filter(r => r.status === 200).length, 25);
     assert.equal(bookings.filter(r => r.status === 409).length, 75);
 
     const appForm = await api("/api/admin/forms", "POST", { title: "Load test applications", type: "application", fields });
+    assert.equal(appForm.response.status, 200, appForm.data.message);
+    await publishForm(appForm.data.form);
     const beforeApplications = JSON.parse(await readFile(path.join(dir, "platform.json"), "utf8")).data;
     const applications = await burst("concurrent verified applications linked to registrations", Array.from({ length: Math.min(50, concurrency) }, (_, i) => {
         const student = beforeApplications.students.find(student => student.email === person(i + 1).email);

@@ -9,13 +9,13 @@ export default function BrandLogo({
 }) {
   return (
     <Image
-      src="/logo.png"
+      src="/tic-removebg-preview.png"
       alt="Unicom TIC logo"
-      width={600}
-      height={600}
+      width={806}
+      height={302}
       priority={priority}
       unoptimized
-      className={`shrink-0 object-contain ${className}`}
+      className={`shrink-0 object-cover object-left ${className}`}
     />
   );
 }

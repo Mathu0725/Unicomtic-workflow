@@ -37,7 +37,7 @@ describe("Durable admissions, duplicate protection and workshop capacity", () =>
             const reg = db.registrations.find(r => r.id === submission.registration_id)!;
             queueSheet(db, "current-admissions-sheet", "Registrations", submissionSheetRow(student, reg, undefined, submission), submission.id);
             expect(db.outbox.filter(j => j.type === "sheet")).toHaveLength(1);
-            expect(job.payload.rows[0]).toMatchObject({ referenceNo: submission.reference_no, nic: student.nic, status: reg.status });
+            expect(job.payload.rows[0]).toMatchObject({ referenceNo: `SUB-${submission.id}`, responseReference: submission.reference_no, nic: student.nic, status: reg.status });
         });
     });
     it("persists accepted submissions and notification jobs across repository reads", async () => {
@@ -111,7 +111,7 @@ describe("Durable admissions, duplicate protection and workshop capacity", () =>
     it("ignores extra payload fields that could overwrite a Google Sheet reference", async () => {
         const accepted = await transaction(db => { db.integrations.registration_sheet_id = "sheet123"; return submitCustomForm(form(db), { ...person(), referenceNo: "VICTIM-REF", status: "selected" }); });
         const db = await readDatabase(), sheet = db.outbox.find(j => j.type === "sheet")!;
-        expect(sheet.payload.rows[0].referenceNo).toBe(accepted.submission.reference_no);
+        expect(sheet.payload.rows[0].referenceNo).toBe(`SUB-${accepted.submission.id}`);
         expect(db.formSubmissions[0].data.referenceNo).toBeUndefined();
         expect(sheet.payload.rows[0].status).not.toBe("selected");
     });

@@ -4,8 +4,10 @@ import path from "node:path";
 import os from "node:os";
 const send = vi.hoisted(() => vi.fn());
 const syncSheet = vi.hoisted(() => vi.fn());
+const syncForm = vi.hoisted(() => vi.fn());
 vi.mock("../../src/lib/email/smtp-client", () => ({ sendEmail: send }));
 vi.mock("../../src/lib/google/sheets-service", () => ({ googleSheetsService: { syncRecords: syncSheet } }));
+vi.mock("../../src/lib/google/form-response-sync", () => ({ syncFormResponses: syncForm }));
 import { enqueue, processOutbox, queueSheet } from "../../src/lib/jobs/outbox";
 import { readDatabase, transaction } from "../../src/lib/data/repository";
 let dir: string;
@@ -16,6 +18,7 @@ beforeEach(async () => {
     vi.stubEnv("SEED_DEMO_DATA", "false");
     send.mockReset();
     syncSheet.mockReset();
+    syncForm.mockReset();
     await transaction(db => { db.integrations.registration_sheet_id = "admissions"; db.integrations.application_sheet_id = "admissions"; db.formSubmissions.push({ id: "submission-1", form_id: db.customForms[0].id, reference_no: "REG-1", data: {}, email_sent: false, synced_to_sheet: false, created_at: new Date().toISOString() }); enqueue(db, "email", "confirmation:1", { to: "student@example.com", subject: "Confirmation", html: "Saved", sourceId: "submission-1" }); });
 });
 afterEach(async () => { vi.unstubAllEnvs(); await rm(dir, { recursive: true, force: true }); });
@@ -109,4 +112,44 @@ it("pauses an older Sheet destination before contacting the provider", async () 
     const job = (await readDatabase()).outbox[0];
     expect(job).toMatchObject({ status: "blocked", attempts: 0, error_code: "SHEET_DESTINATION_CHANGED" });
     expect(syncSheet).not.toHaveBeenCalled();
+});
+
+it("upgrades queued legacy form exports to stable submission keys before dispatch", async () => {
+    syncForm.mockResolvedValue({ success: true });
+    await transaction(db => { db.outbox = []; db.customForms[0].google_sheets_config = { enabled: true, sheet_id: "admissions", sheet_name: "Registrations", auto_sync: true, clean_export: true }; queueSheet(db, "admissions", "Registrations", { referenceNo: "REG-1", customAnswer: "Keep answer" }, "submission-1"); });
+    await processOutbox();
+    expect(syncForm).toHaveBeenCalledOnce();
+    expect(syncForm.mock.calls[0][2][0]).toMatchObject({ id: "submission-1" });
+    expect((await readDatabase()).outbox[0].payload.rows[0]).toMatchObject({ referenceNo: "SUB-submission-1", responseReference: "REG-1", submissionId: "submission-1", customAnswer: "Keep answer" });
+    expect(syncSheet).not.toHaveBeenCalled();
+});
+
+it("keeps legacy form exports working until the form switches to the clean format", async () => {
+    syncSheet.mockResolvedValue({ success: true });
+    await transaction(db => { db.outbox = []; queueSheet(db, "admissions", "Registrations", { referenceNo: "REG-1" }, "submission-1"); });
+    await processOutbox();
+    expect(syncSheet).toHaveBeenCalledOnce();
+    expect(syncForm).not.toHaveBeenCalled();
+});
+
+it("pauses old pending exports after the form switches to a clean worksheet", async () => {
+    await transaction(db => {
+        db.outbox = [];
+        queueSheet(db, "admissions", "Registrations", { referenceNo: "REG-1" }, "submission-1");
+        db.customForms[0].google_sheets_config = { enabled: true, sheet_id: "admissions", sheet_name: "Registrations", auto_sync: true, clean_export: true };
+    });
+    await processOutbox();
+    expect((await readDatabase()).outbox[0]).toMatchObject({ status: "blocked", error_code: "SHEET_DESTINATION_CHANGED" });
+    expect(syncSheet).not.toHaveBeenCalled(); expect(syncForm).not.toHaveBeenCalled();
+});
+
+it("does not deliver a stale decision version restored to the queue", async () => {
+    await transaction(db => {
+        db.outbox = [];
+        db.selectionDecisions.push({ id: "decision", campaign_id: "camp-2025", student_id: "student", revision: 3, final_status: "selected", notification_status: "pending", approved_by: "staff", approved_at: new Date().toISOString() });
+        enqueue(db, "email", "decision:decision:selected:v1", { decisionId: "decision", to: "student@example.com", subject: "Old offer", html: "Old" });
+    });
+    await processOutbox();
+    expect(send).not.toHaveBeenCalled();
+    const db = await readDatabase(); expect(db.outbox[0].error_code).toBe("DECISION_SUPERSEDED"); expect(db.selectionDecisions[0].notification_status).toBe("pending");
 });

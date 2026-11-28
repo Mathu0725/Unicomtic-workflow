@@ -26,6 +26,9 @@ export default function AdminAttendancePage() {
   const [candidates, setCandidates] = useState<any[]>([]);
   const [recentAttendance, setRecentAttendance] = useState<any[]>([]);
   const [marking, setMarking] = useState<string | null>(null);
+  const [utInputs, setUtInputs] = useState<Record<string, string>>({});
+  const [reconcileMarks, setReconcileMarks] = useState<Record<string, boolean>>({});
+  const [canReconcileMarks, setCanReconcileMarks] = useState(false);
   const [notification, setNotification] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
   useEffect(() => {
@@ -75,6 +78,7 @@ export default function AdminAttendancePage() {
       const data = await res.json();
       if (data.candidates) {
         setCandidates(data.candidates);
+        setCanReconcileMarks(Boolean(data.canReconcileMarks));
         if (data.candidates.length === 0) {
           setNotification({ type: "error", message: "No matching student record found." });
         }
@@ -128,6 +132,27 @@ export default function AdminAttendancePage() {
     }
   };
 
+  const handleSaveUtNumber = async (studentId: string) => {
+    if (reconcileMarks[studentId] && !window.confirm("Update this student's existing exam result IDs to the new UT number? Scores will stay unchanged and the correction will be audited.")) return;
+    setMarking(studentId);
+    setNotification(null);
+    try {
+      const res = await apiResponse("/api/admin/attendance", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workshopId: selectedWorkshopId, studentId, utNumber: utInputs[studentId] || "", reconcileMarks: Boolean(reconcileMarks[studentId]) }),
+      });
+      const data = await res.json();
+      setCandidates((current) => current.map((item) => item.studentId === studentId ? { ...item, utNumber: data.utNumber, studentExamId: data.utNumber } : item));
+      setNotification({ type: "success", message: data.message });
+      void loadRecentAttendance();
+    } catch (error) {
+      setNotification({ type: "error", message: error instanceof Error ? error.message : "Could not save UT number." });
+    } finally {
+      setMarking(null);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <RequestNotice error>{pageError}</RequestNotice>
@@ -137,7 +162,7 @@ export default function AdminAttendancePage() {
           <span className="text-xs font-bold text-blue-600 uppercase tracking-wider">Module 8 (Stage 6)</span>
           <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">Entrance Attendance & Student ID Desk</h1>
           <p className="text-xs sm:text-sm text-slate-500 mt-1">
-            Fast entrance search by NIC last 4 digits, phone, or name. Generates or reuses unique Student/Exam IDs (TIC-2025-XXXX).
+            Find a student by NIC last four, UT last three or four, reference, phone or name. Assign their UT number before the exam.
           </p>
         </div>
 
@@ -180,10 +205,10 @@ export default function AdminAttendancePage() {
       <div className="bg-white rounded-2xl border-2 border-blue-500/30 p-6 shadow-sm">
         <h2 className="text-sm font-bold text-slate-900 mb-2 flex items-center gap-2">
           <Search className="w-4 h-4 text-blue-600" />
-          Entrance Desk Quick Lookup (NIC Last 4 Digits / Mobile / Name)
+          Entrance Desk Quick Lookup (NIC / UT suffix / Mobile / Name)
         </h2>
         <p className="text-xs text-slate-500 mb-4">
-          Type the candidate's last four NIC digits (e.g. <code>4567</code>), full phone number, or registration reference.
+          Type the last four NIC digits, last three or four UT digits, full phone number, or registration reference. Verify every match before assigning an ID.
         </p>
 
         <form onSubmit={handleSearch} className="flex gap-3">
@@ -215,7 +240,7 @@ export default function AdminAttendancePage() {
             <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs font-semibold flex items-center gap-2">
               <ShieldAlert className="w-4 h-4 text-amber-600 flex-shrink-0" />
               <span>
-                Multiple students match this NIC suffix ({candidates.length} records found). Verify full name and contact number before marking attendance.
+                Multiple students match this search ({candidates.length} records found). Verify full name and contact number before assigning a UT number or marking attendance.
               </span>
             </div>
           )}
@@ -264,7 +289,22 @@ export default function AdminAttendancePage() {
                       {cand.studentExamId || "Will generate on check-in"}
                     </span>
                   </div>
+                  <div>
+                    <span className="text-slate-400 block text-[10px] uppercase font-bold">UT Number</span>
+                    <span className="font-mono font-bold text-blue-700">{cand.utNumber || "Not assigned"}</span>
+                  </div>
                 </div>
+
+                {!cand.utNumber && <div className="mb-3 flex gap-2">
+                  <label className="flex-1 text-xs font-semibold">Assign UT number
+                    <input className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 font-mono uppercase" value={utInputs[cand.studentId] || ""} onChange={(event) => setUtInputs((current) => ({ ...current, [cand.studentId]: event.target.value.toUpperCase() }))} placeholder="UT011000" maxLength={8} />
+                  </label>
+                  <button type="button" className="self-end rounded-lg bg-blue-700 px-3 py-2 text-xs font-bold text-white disabled:opacity-50" disabled={Boolean(marking) || !utInputs[cand.studentId]} onClick={() => void handleSaveUtNumber(cand.studentId)}>Save UT</button>
+                </div>}
+                {!cand.utNumber && canReconcileMarks && cand.existingMarksCount > 0 && <label className="mb-3 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+                  <input type="checkbox" checked={Boolean(reconcileMarks[cand.studentId])} onChange={(event) => setReconcileMarks((current) => ({ ...current, [cand.studentId]: event.target.checked }))} />
+                  Update {cand.existingMarksCount} existing exam result ID(s) to this UT number. Scores remain unchanged. Admin only.
+                </label>}
 
                 {/* Action Buttons */}
                 <div className="flex gap-2 pt-2 border-t border-slate-100">
@@ -313,7 +353,7 @@ export default function AdminAttendancePage() {
             <tbody className="divide-y divide-slate-100">
               {recentAttendance.map((att) => (
                 <tr key={att.id} className="hover:bg-slate-50">
-                  <td className="p-3 font-mono font-bold text-blue-700">{att.student_exam_id}</td>
+                  <td className="p-3 font-mono font-bold text-blue-700">{att.utNumber || att.student_exam_id}</td>
                   <td className="p-3 font-bold text-slate-900">{att.studentName}</td>
                   <td className="p-3 font-mono">{att.maskedNic}</td>
                   <td className="p-3">

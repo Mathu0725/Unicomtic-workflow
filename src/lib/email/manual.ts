@@ -1,9 +1,12 @@
 import { z } from "zod";
+import { emailWorkflowValues, emailWorkflowVariables } from "./workflow-settings";
+import { emailAttachmentsSchema } from "./attachments";
 import type { DatabaseStore } from "../data/store";
 import { RequestError } from "../http";
 import { candidateEmailSchema } from "../validations/email";
 import { emailCandidates } from "./candidates";
 import { validateEmailAccount } from "./accounts";
+import { formAvailabilityProblem } from "../forms/field-rules";
 import {
   personalizeTemplate,
   plainEmailHtml,
@@ -13,9 +16,12 @@ export const manualTemplateIds = [
   "candidate_message",
   "registration_confirmation",
   "application_confirmation",
+  "application_invitation",
   "form_confirmation",
+  "workshop_invitation",
 ] as const;
 export const manualVariables = [
+  ...emailWorkflowVariables,
   "name",
   "email",
   "reference",
@@ -25,7 +31,21 @@ export const manualVariables = [
   "formTitle",
   "district",
   "phone",
+  "applicationUrl",
 ];
+
+function applicationUrlForRegistration(db: DatabaseStore, campaignId?: string) {
+  const matching = db.customForms.filter(
+    (form) =>
+      form.type === "application" &&
+      form.application_mode === "open" &&
+      form.campaign_id === campaignId &&
+      !formAvailabilityProblem(form),
+  );
+  if (matching.length !== 1) return;
+  const base = (process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").replace(/\/$/, "");
+  return `${base}/form/${matching[0].slug}`;
+}
 export const manualMessageSchema = z
   .object({
     candidates: z
@@ -40,6 +60,7 @@ export const manualMessageSchema = z
       )
       .max(500),
     directRecipients: z.array(candidateEmailSchema).max(500),
+    attachments: emailAttachmentsSchema.default([]),
     subject: z.string().trim().min(1).max(250),
     body: z.string().trim().min(1).max(10000),
     accountId: z.string().max(128).default(""),
@@ -101,6 +122,15 @@ export function prepareManualEmail(db: DatabaseStore, raw: unknown) {
       db.customForms.find((form) => candidate.formIds?.includes(form.id))
         ?.title ||
       (candidate.stage === "application" ? "Application" : "Registration");
+    const applicationUrl =
+      input.templateId === "application_invitation" &&
+      candidate.stage === "registration"
+        ? applicationUrlForRegistration(db, candidate.campaignId)
+        : undefined;
+    if (input.templateId === "application_invitation" && !applicationUrl)
+      throw new RequestError(
+        "This registration's intake needs exactly one published open application form before you can send an application invitation.",
+      );
     const to = candidate.email.trim().toLowerCase();
     if (!recipients.has(to))
       recipients.set(to, {
@@ -116,6 +146,8 @@ export function prepareManualEmail(db: DatabaseStore, raw: unknown) {
           reference: candidate.reference,
         },
         variables: {
+          ...emailWorkflowValues(db.settings),
+          utNumber: student.ut_number || candidate.reference,
           name: candidate.name,
           email: to,
           reference: candidate.reference,
@@ -125,6 +157,7 @@ export function prepareManualEmail(db: DatabaseStore, raw: unknown) {
           formTitle,
           district: candidate.district,
           phone: student.phone || "",
+          ...(applicationUrl ? { applicationUrl } : {}),
         },
       });
   }
@@ -135,7 +168,7 @@ export function prepareManualEmail(db: DatabaseStore, raw: unknown) {
         to,
         toName: "",
         reference: "",
-        variables: { email: to, name: "Applicant", institution },
+        variables: { ...emailWorkflowValues(db.settings), utNumber: "Applicant", email: to, name: "Applicant", institution },
       });
   }
   if (!recipients.size || recipients.size > 500)
@@ -164,6 +197,7 @@ export function prepareManualEmail(db: DatabaseStore, raw: unknown) {
       ),
       text,
       html: plainEmailHtml(text),
+      attachments: input.attachments,
     };
   });
   return {

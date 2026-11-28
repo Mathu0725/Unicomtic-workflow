@@ -3,7 +3,7 @@ import { route, RequestError } from "@/lib/http";
 import { getDb } from "@/lib/data/store";
 import { availableWorkshops, submitCustomForm } from "@/lib/admissions/service";
 import { hasDriveAccess } from "@/lib/google/oauth";
-import { requireCandidateAccess } from "@/lib/security/candidate-access";
+import { requireFormAccess } from "@/lib/security/candidate-access";
 import { documentAnswer } from "@/lib/documents/receipts";
 import { findPublicForm } from "@/lib/forms/public-links";
 import {
@@ -12,7 +12,7 @@ import {
 } from "@/lib/forms/messages";
 import { cleanRichText } from "@/lib/forms/rich-text";
 import { formAvailabilityProblem } from "@/lib/forms/field-rules";
-import { formRequiresCandidateAccess } from "@/lib/forms/access";
+import { candidateSessionAllowsForm, formRequiresCandidateAccess } from "@/lib/forms/access";
 export const dynamic = "force-dynamic";
 export const GET = route(
   async (
@@ -106,7 +106,7 @@ export const POST = route(
     if (!body.data || typeof body.data !== "object" || Array.isArray(body.data))
       throw new RequestError("Invalid submission.");
     const access = formRequiresCandidateAccess(form)
-      ? requireCandidateAccess(getDb(), req)
+      ? requireFormAccess(getDb(), req, form)
       : undefined;
     if (access) {
       for (const field of form.fields.filter(
@@ -139,6 +139,7 @@ export const POST = route(
       message:
         "Your response is saved. Email and Google Sheets updates are queued and tracked.",
       confirmationMessage: form.confirmation_message,
+      workshop: result.submission.workshop_snapshot || null,
       redirectUrl: form.redirect_url || null,
     });
   },
@@ -148,21 +149,13 @@ export const POST = route(
     authorize: (req, { params }, db) => {
       const form = findPublicForm(db, params.slug);
       if (form && formRequiresCandidateAccess(form)) {
-        const access = requireCandidateAccess(db, req);
+        const access = requireFormAccess(db, req, form);
         const campaign =
           form.campaign_id ||
           db.campaigns.find((campaign) => campaign.is_active)?.id;
-        if (campaign !== access.registration.campaign_id)
+        if (campaign !== access.registration.campaign_id || (form.type !== "workshop_rsvp" && !candidateSessionAllowsForm(form, access.claims)))
           throw new RequestError(
-            "This form belongs to a different intake.",
-            403,
-          );
-        if (
-          form.type === "application" &&
-          !["invited", "applied"].includes(access.registration.status)
-        )
-          throw new RequestError(
-            "An application invitation is required. Contact admissions.",
+            "Verify your registered details to continue with this form.",
             403,
           );
         return access.registration.id;

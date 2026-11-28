@@ -5,7 +5,7 @@ import { History, Shield, Search, FileCode } from "lucide-react";
 import { useLiveData, Notice } from "@/components/live-data";
 
 export default function AuditLogsPage() {
-  const { data, error, reload, stale } = useLiveData("/api/admin/audit-logs", 10000);
+  const { data, error, reload, stale } = useLiveData("/api/admin/audit-logs", 30000);
   const logs = data?.logs || [];
   const [search, setSearch] = useState("");
 

@@ -388,9 +388,7 @@ it("blocks old destinations on reconnect, rejects changes during an in-flight ex
   ).toBe(200);
   await processOutbox(120, 100);
   const db = await readDatabase();
-  expect(
-    db.outbox.filter((job) => job.type === "sheet").map((job) => job.status),
-  ).toEqual(["blocked", "sent"]);
+  expect(db.outbox.filter((job) => job.type === "sheet").slice(0, 2).map((job) => job.status)).toEqual(["blocked", "sent"]);
   expect(mocks.workshopSync.mock.calls[0][1]).toBe("New Workshop Tab");
   expect(
     (
@@ -424,10 +422,51 @@ it("disables future exports without losing bookings and preserves the current st
       )
     ).status,
   ).toBe(200);
-  await book(2);
+  const second = await book(2);
   db = await readDatabase();
   expect(db.workshopBookings).toHaveLength(2);
+  expect(db.outbox.filter((job) => job.type === "sheet" && job.payload.bookingId === second.id)).toHaveLength(0);
+});
+it("includes workshop name and accepted email status in auto-synced booking rows", async () => {
+  await save();
+  const booking = await book();
+  let db = await readDatabase();
+  const email = db.outbox.find((job) => job.key === `booking:${booking.id}`)!;
+  expect(workshopBookingSheetRow(db, booking.id)).toMatchObject({
+    workshopTitle: "Workshop 1",
+    emailStatus: "queued",
+    emailsAccepted: 0,
+    lastEmailType: "confirmation",
+  });
+  await processOutbox(1, 4000, email.id);
+  db = await readDatabase();
+  expect(workshopBookingSheetRow(db, booking.id)).toMatchObject({
+    workshopTitle: "Workshop 1",
+    emailStatus: "sent",
+    emailsAccepted: 1,
+    lastEmailType: "confirmation",
+    lastEmailSentAt: expect.any(String),
+  });
+  expect(db.outbox.some((job) => job.type === "sheet" && job.payload.bookingId === booking.id && job.payload.rows[0].emailStatus === "sent")).toBe(true);
+});
+it("keeps manual-only Sheet records and exports current mail status without a duplicate booking", async () => {
+  const connection = await (await save(settings({ autoSync: false, syncExisting: false }))).json();
+  const booking = await book();
+  let db = await readDatabase();
+  expect(db.outbox.filter((job) => job.type === "sheet")).toHaveLength(0);
+  const email = db.outbox.find((job) => job.key === `booking:${booking.id}`)!;
+  await processOutbox(1, 4000, email.id);
+  const body = { expectedVersion: connection.version, clientAttemptId: settings().clientAttemptId };
+  await resync(req("/api/admin/workshops/workshop-1/sheets/sync", body, "admin", "manual-export-one"), ctx());
+  db = await readDatabase();
   expect(db.outbox.filter((job) => job.type === "sheet")).toHaveLength(1);
+  expect(db.outbox.find((job) => job.type === "sheet")?.payload.rows[0]).toMatchObject({
+    bookingId: booking.id,
+    workshopTitle: "Workshop 1",
+    emailStatus: "sent",
+    emailsAccepted: 1,
+  });
+  expect(db.workshopBookings).toHaveLength(1);
 });
 it("concurrent queue workers claim a workshop batch once", async () => {
   await save();

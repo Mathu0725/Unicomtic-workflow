@@ -1,3 +1,4 @@
+import { attachmentSummary, EMAIL_REQUEST_LIMIT } from "@/lib/email/attachments";
 import { NextResponse } from "next/server";
 import { route } from "@/lib/http";
 import { getDb } from "@/lib/data/store";
@@ -13,6 +14,7 @@ export const POST = route(
       success: true,
       recipientCount: messages.length,
       duplicateCount,
+      attachments: attachmentSummary(messages[0]?.attachments),
       previews: messages
         .slice(0, 10)
         .map((message) => ({
@@ -24,5 +26,5 @@ export const POST = route(
     });
   },
   true,
-  { readOnly: true },
+  { readOnly: true, bodyLimit: EMAIL_REQUEST_LIMIT },
 );

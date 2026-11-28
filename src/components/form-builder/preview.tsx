@@ -96,7 +96,7 @@ export default function FormPreview({
               messages={messages}
               autoOpen={false}
             />
-            <div className="rounded-t-2xl bg-[#4d4d4d] p-6 text-white">
+            <div className="rounded-t-2xl bg-[#142b49] p-6 text-white">
               <p className="mb-2 text-xs text-neutral-200">
                 Unicom TIC Portal · Scholarship
               </p>
@@ -159,7 +159,7 @@ export default function FormPreview({
               <button
                 type="button"
                 disabled
-                className="w-full rounded-xl bg-[#4d4d4d] p-3.5 text-sm font-bold text-white opacity-60"
+                className="w-full rounded-xl bg-blue-700 p-3.5 text-sm font-bold text-white opacity-60"
               >
                 {messages.submitButtonLabel}
               </button>

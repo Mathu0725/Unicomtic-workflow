@@ -9,7 +9,7 @@ import {
   panelClass,
   Notice,
 } from "@/components/live-data";
-import WorkshopEditor from "@/components/workshop-editor";
+import WorkshopEditor, { type WorkshopAttachmentResult } from "@/components/workshop-editor";
 import type { workshopSummary } from "@/lib/workshops/management";
 type Summary = ReturnType<typeof workshopSummary>;
 export default function WorkshopsPage() {
@@ -24,6 +24,7 @@ export default function WorkshopsPage() {
     [search, setSearch] = useState(""),
     [message, setMessage] = useState(""),
     [failure, setFailure] = useState("");
+  const [attachments, setAttachments] = useState<WorkshopAttachmentResult[]>([]);
   useEffect(() => {
     const controller = new AbortController();
     api("/api/campaigns", undefined, "GET", controller.signal)
@@ -55,14 +56,17 @@ export default function WorkshopsPage() {
       </header>
       <Notice error>{failure || error}</Notice>
       <Notice>{message}</Notice>
+      {attachments.length > 0 && <ul className="space-y-2 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm">{attachments.map(f => <li key={f.id}><strong>{f.title}</strong> — {f.live ? "Visible now" : "Attached to draft"} · <Link className="font-semibold text-blue-700 underline" href={f.live ? `/form/${f.slug}` : `/admin/forms/${f.id}/builder`}>{f.live ? "Open form" : "Review and publish"}</Link></li>)}</ul>}
       {show && data?.canManage && campaigns.length > 0 && (
         <section className={panelClass}>
           <WorkshopEditor
+            allowAttachments
             campaigns={campaigns}
             onCancel={() => setShow(false)}
-            onSaved={async (w) => {
+            onSaved={async (w, forms = []) => {
               setShow(false);
-              setMessage(w.title + " created. Open it to attach a form.");
+              setAttachments(forms);
+              setMessage(w.title + (forms.length ? " created and attached to selected forms." : " saved. Open it to attach a form."));
               await reload();
             }}
           />

@@ -28,8 +28,12 @@ export function validateCommitRows(db: DatabaseStore, exam: Exam, input: unknown
     const rows = marksRowsSchema.parse(input), known = knownExamAttendees(db, exam), seen = new Set<string>();
     const errors: Record<string, string[]> = {};
     const validated = rows.map((row, idx) => {
-        const id = row.studentExamId.trim().toUpperCase(), attendee = known.find(a => a.student_exam_id.trim().toUpperCase() === id);
+        const id = row.studentExamId.trim().toUpperCase();
+        const matches = known.filter(a => a.student_exam_id.trim().toUpperCase() === id);
+        const studentIds = new Set(matches.map(a => a.student_id));
+        const attendee = studentIds.size === 1 ? matches[0] : undefined;
         const issues: string[] = [];
+        if (studentIds.size > 1) issues.push("Student ID matches more than one attendee; resolve the duplicate before importing.");
         if (!attendee) issues.push("Student ID is not eligible for this examination/intake.");
         if (row.rawScore > exam.max_marks) issues.push("Score exceeds the examination maximum.");
         if (seen.has(id)) issues.push("Duplicate student ID in this import.");

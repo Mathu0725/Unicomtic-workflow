@@ -14,7 +14,7 @@ import EmailDeliveryActivity from "@/components/email-delivery-activity";
 import SmtpConfiguration from "@/components/smtp-configuration";
 
 export default function EmailCenterPage() {
-  const limits = useLiveData("/api/admin/email/limits", 5000);
+  const limits = useLiveData("/api/admin/email/limits", 30000);
   const [message, setMessage] = useState(""),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false),

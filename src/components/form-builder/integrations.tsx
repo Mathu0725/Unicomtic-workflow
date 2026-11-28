@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { api } from "@/lib/client/api";
+import { chooseGoogleSpreadsheet } from "@/lib/client/google-spreadsheet-picker";
 import type { CustomForm } from "@/lib/data/store";
 import type { FormEditorValues } from "@/lib/forms/editor";
 import {
@@ -24,12 +25,14 @@ export default function FormIntegrations({
   saved: boolean;
 }) {
   const [connection, setConnection] = useState<{
-      google?: { email: string } | null;
+      google?: { email: string; driveAccess?: boolean } | null;
     } | null>(null),
     [error, setError] = useState(""),
     [notice, setNotice] = useState(""),
     [busy, setBusy] = useState(false),
-    [worksheets, setWorksheets] = useState<string[]>([]);
+    [worksheets, setWorksheets] = useState<string[]>([]),
+    [selectedSpreadsheet, setSelectedSpreadsheet] = useState(""),
+    [pickerBusy, setPickerBusy] = useState(false);
   useEffect(() => {
     const controller = new AbortController();
     api("/api/admin/integrations", undefined, "GET", controller.signal)
@@ -49,17 +52,21 @@ export default function FormIntegrations({
     : config.enabled
       ? "separate"
       : "inherit";
-  const sheetAction = async (action: "inspect" | "create") => {
+  const sheetAction = async (
+    action: "inspect" | "create",
+    requestedSheetId?: string,
+  ) => {
     setBusy(true);
     setError("");
     setNotice("");
     try {
       const result = await api(`/api/admin/forms/${form.id}/sheets`, {
         action,
-        sheetId: config.sheet_id,
+        sheetId: requestedSheetId || config.sheet_id,
         title: `${values.title} responses`,
       });
       setWorksheets(result.worksheets);
+      setSelectedSpreadsheet(result.title || "");
       setNotice(result.message);
       if (action === "create")
         onChange({
@@ -77,6 +84,38 @@ export default function FormIntegrations({
       );
     } finally {
       setBusy(false);
+    }
+  };
+  const chooseSpreadsheet = async () => {
+    setPickerBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const file = await chooseGoogleSpreadsheet();
+      if (!file) return;
+      const result = await api(`/api/admin/forms/${form.id}/sheets`, {
+        action: "inspect",
+        sheetId: file.id,
+      });
+      const worksheet = result.worksheets.includes(config.sheet_name)
+        ? config.sheet_name
+        : result.worksheets[0] || "Responses";
+      setWorksheets(result.worksheets);
+      setSelectedSpreadsheet(result.title || file.name);
+      onChange({
+        google_sheets_config: {
+          ...config,
+          enabled: true,
+          disabled: false,
+          sheet_id: result.sheetId,
+          sheet_name: worksheet,
+        },
+      });
+      setNotice(`Selected “${result.title || file.name}”. Choose a worksheet, then save the form.`);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Google Drive picker could not open.");
+    } finally {
+      setPickerBusy(false);
     }
   };
   const copyScript = async () => {
@@ -156,6 +195,28 @@ export default function FormIntegrations({
         )}
         {mode === "separate" && (
           <>
+            {connection?.google && !connection.google.driveAccess && (
+              <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                Allow Google Drive file access to browse spreadsheets. This lets the portal access only files you choose.
+                {" "}
+                <a className="font-semibold underline" href="/api/auth/google?drive=1">
+                  Enable Drive access
+                </a>
+              </p>
+            )}
+            <button
+              type="button"
+              className={buttonClass}
+              disabled={pickerBusy || busy || !connection?.google?.driveAccess}
+              onClick={() => void chooseSpreadsheet()}
+            >
+              {pickerBusy ? "Loading Google Drive…" : "Choose a spreadsheet from Google Drive"}
+            </button>
+            {selectedSpreadsheet && (
+              <p className="text-sm text-slate-600" role="status">
+                Selected: <strong>{selectedSpreadsheet}</strong>
+              </p>
+            )}
             <SettingLabel label="Spreadsheet URL or ID">
               <input
                 className={inputClass}
@@ -163,6 +224,7 @@ export default function FormIntegrations({
                 onChange={(event) => {
                   const value = event.target.value;
                   setWorksheets([]);
+                  setSelectedSpreadsheet("");
                   onChange({
                     google_sheets_config: {
                       ...config,

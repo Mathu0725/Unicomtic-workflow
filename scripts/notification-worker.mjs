@@ -1,5 +1,6 @@
 import nextEnv from "@next/env";
 import { setTimeout as delay } from "node:timers/promises";
+import { workerDelay } from "./lib/worker-delay.mjs";
 
 nextEnv.loadEnvConfig(process.cwd(), process.env.NODE_ENV !== "production");
 const base = (process.env.WORKER_APP_URL || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").replace(/\/$/, "");
@@ -17,7 +18,9 @@ process.on("SIGINT", () => stop.abort());
 process.on("SIGTERM", () => stop.abort());
 console.log("Notification worker started. Dispatching durable jobs with account-wide pacing.");
 let consecutiveFailures = 0;
+let idleRuns = 0;
 while (!stop.signal.aborted) {
+    let processed = 0;
     try {
         const response = await fetch(`${base}/api/cron/process-queue`, {
             method: "POST", headers: { Authorization: `Bearer ${process.env.CRON_SECRET}` },
@@ -29,12 +32,15 @@ while (!stop.signal.aborted) {
         const result = await response.json();
         if (result.success !== true || !Number.isInteger(result.processed)) throw new Error("Queue endpoint returned an unexpected response. Saved jobs remain queued.");
         consecutiveFailures = 0;
+        processed = result.processed;
         if (result.processed) console.log(JSON.stringify({ sent: result.sent, failed: result.failed, batches: result.batches }));
     } catch (error) {
         if (stop.signal.aborted) break;
         consecutiveFailures++;
         console.error(error.message || "Worker request failed; retrying.");
     }
-    try { await delay(Math.min(60000, 2000 * 2 ** Math.min(consecutiveFailures, 5)), undefined, { signal: stop.signal }); } catch { break; }
+    const next = workerDelay({ processed, failures: consecutiveFailures, idleRuns });
+    idleRuns = next.idleRuns;
+    try { await delay(next.delayMs, undefined, { signal: stop.signal }); } catch { break; }
 }
 console.log("Notification worker stopped. Unfinished jobs remain durable.");

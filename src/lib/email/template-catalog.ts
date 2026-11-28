@@ -1,13 +1,16 @@
+import type { EmailAttachment } from "./attachments";
+import { correctedTemplateCopy } from "./corrected-template-copy";
+import { emailWorkflowVariables } from "./workflow-settings";
 import { reminderCopy, reminderKinds } from "../reminders/templates";
 
 export const notificationTemplateIds = [
   "registration_confirmation", "application_confirmation", "form_confirmation", "admin_submission",
-  "application_invitation", "workshop_booking", "workshop_reminder", "workshop_update", "interview_invitation",
+  "application_invitation", "workshop_invitation", "workshop_booking", "workshop_reminder", "workshop_update", "interview_invitation",
   "selection_selected", "selection_waiting_list", "selection_unsuccessful", "candidate_access",
   "application_pending", "workshop_unbooked", "workshop_missed", "candidate_message", "test_notification",
 ] as const;
 export type NotificationTemplateId = typeof notificationTemplateIds[number];
-export type EmailTemplateContent = { subject: string; body: string; actionLabel?: string };
+export type EmailTemplateContent = { attachments?: EmailAttachment[]; subject: string; body: string; actionLabel?: string };
 export type SavedEmailTemplate = EmailTemplateContent & { version: number; updated_at: string; updated_by: string };
 export type TemplateDefinition = EmailTemplateContent & { id: NotificationTemplateId; title: string; group: string; description: string; variables: readonly string[]; linkNotice?: string };
 
@@ -21,13 +24,14 @@ export const notificationTemplates: TemplateDefinition[] = [
     subject: "Submission received — {{reference}}", body: "Dear {{name}},\n\nYour response to {{formTitle}} has been received.\nReference: {{reference}}.", actionLabel: "Track your admission progress" },
   { id: "admin_submission", title: "New submission — staff notification", group: "Admissions", description: "Default alert to admissions staff. Form-specific staff templates can override it.", variables: [...identity, "submissionType", "formTitle", "registrationCount", "applicationCount"],
     subject: "New {{submissionType}} — {{name}} [{{reference}}]", body: "{{name}} ({{email}}) submitted {{reference}}.\n\nForm: {{formTitle}}\nTotal applications: {{applicationCount}}\nTotal registrations: {{registrationCount}}" },
-  { id: "application_invitation", title: "Application invitation", group: "Admissions", description: "Sent when admissions invites a registered student to apply.", variables: identity,
+  { id: "application_invitation", title: "Application invitation", group: "Admissions", description: "Ask selected registration candidates to complete the published application form for their intake.", variables: [...identity, "applicationUrl"],
     subject: "Action Required: Complete Your Unicom TIC Application [{{reference}}]", body: "Dear {{name}},\n\nYou have been selected to proceed with your application for {{intake}}. Please complete the formal application.\n\n{{institution}} Admissions", actionLabel: "Complete your application", linkNotice: "The application link is added automatically and secured at dispatch." },
-  { id: "workshop_booking", title: "Workshop booking confirmation", group: "Workshops", description: "Sent when a new workshop seat is confirmed.", variables: [...identity, "workshop", "date", "venue", "address"],
+  { id: "workshop_invitation", title: "Workshop registration invitation", group: "Workshops", description: "Starting message for inviting applicants to register for a workshop. Set its form link in General settings.", variables: [...identity, ...emailWorkflowVariables], ...correctedTemplateCopy.workshop_invitation } as TemplateDefinition,
+  { id: "workshop_booking", title: "Workshop booking confirmation", group: "Workshops", description: "Sent when a new workshop seat is confirmed.", variables: [...identity, "workshop", "date", "startTime", "endTime", "venue", "address", "mapsUrl"],
     subject: "Workshop booking confirmed — {{workshop}}", body: "Dear {{name}},\n\nYour workshop seat is confirmed.\n\n{{workshop}}\n{{date}} (Sri Lanka)\n{{venue}}\n{{address}}\n\nReference: {{reference}}. Bring your NIC.", actionLabel: "View location", linkNotice: "A location link is included when the workshop has a Google Maps URL." },
-  { id: "workshop_reminder", title: "Scheduled workshop reminder", group: "Workshops", description: "Used by the scheduled queue before a booked workshop.", variables: [...identity, "workshop", "date", "venue", "address", "daysBefore"],
+  { id: "workshop_reminder", title: "Scheduled workshop reminder", group: "Workshops", description: "Used by the scheduled queue before a booked workshop.", variables: [...identity, "workshop", "date", "startTime", "endTime", "venue", "address", "mapsUrl", "daysBefore"],
     subject: "Workshop reminder — {{workshop}}", body: "Dear {{name}},\n\nYour workshop {{workshop}} is scheduled for {{date}} (Sri Lanka).\nVenue: {{venue}}\n{{address}}\n\nReference: {{reference}}. Bring your NIC.", actionLabel: "View location" },
-  { id: "workshop_update", title: "Workshop details update", group: "Workshops", description: "Review and send current workshop details to booked participants.", variables: [...identity, "workshop", "date", "venue", "address", "daysBefore"],
+  { id: "workshop_update", title: "Workshop details update", group: "Workshops", description: "Review and send current workshop details to booked participants.", variables: [...identity, "workshop", "date", "startTime", "endTime", "venue", "address", "mapsUrl", "daysBefore"],
     subject: "Workshop update — {{workshop}}", body: "Dear {{name}},\n\nPlease check the current details for your workshop.\n\n{{workshop}}\n{{date}} (Sri Lanka)\n{{venue}}\n{{address}}\n\nReference: {{reference}}.", actionLabel: "View location" },
   { id: "interview_invitation", title: "Interview invitation", group: "Assessments", description: "Sent when a candidate is assigned to an interview.", variables: [...identity, "interview", "date", "venue"],
     subject: "Interview Invitation - Unicom TIC Admissions [{{interview}}]", body: "Dear {{name}},\n\nYou are invited for the {{institution}} Admissions Interview.\n\nSession: {{interview}}\nVenue: {{venue}}\nDate & time: {{date}} (Sri Lanka)" },
@@ -43,6 +47,16 @@ export const notificationTemplates: TemplateDefinition[] = [
   { id: "candidate_message", title: "Personal candidate message", group: "Student reminders", description: "Reusable starting message in Email Center. Staff can edit it before sending to a selected candidate.", variables: ["name", "email", "reference", "intake"], subject: "Admissions update — {{reference}}", body: "Dear {{name}},\n\nWe are contacting you about your admission for {{intake}}.\nReference: {{reference}}.\n\nUnicom TIC Admissions" },
   { id: "test_notification", title: "Sender test notification", group: "Access & sender", description: "Used only when staff explicitly sends a test notification.", variables: ["institution"], subject: "Unicom TIC notification test", body: "Your {{institution}} admissions notification connection is working." },
 ];
+
+for (const definition of notificationTemplates) {
+  const copy = correctedTemplateCopy[definition.id];
+  if (copy) {
+    Object.assign(definition, copy);
+    // Workshop renderers already supply their event-specific variables.
+    if (!["workshop_booking", "workshop_reminder", "workshop_update"].includes(definition.id))
+      definition.variables = [...new Set([...definition.variables, ...emailWorkflowVariables])];
+  }
+}
 
 export const templateDefinition = (id: NotificationTemplateId) => notificationTemplates.find(template => template.id === id)!;
 export function templateVariables(content: string) {
@@ -65,8 +79,20 @@ export function personalizeTemplate(template: string, values: Record<string, unk
   return template.replace(/\{\{\s*([a-zA-Z][\w-]*)\s*\}\}/g, (placeholder, key: string) => Object.hasOwn(values, key) ? String(values[key] ?? "") : placeholder);
 }
 export const escapeEmailHtml = (value: unknown) => String(value ?? "").replace(/[&<>"']/g, character => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[character]!));
-export const plainEmailHtml = (value: string) => `<div style="font-family:Arial,sans-serif;line-height:1.6">${escapeEmailHtml(value).replace(/\r?\n/g, "<br />")}</div>`;
+export function plainEmailHtml(value: string) {
+  const html = value.split(/(https?:\/\/[^\s<>"']+)/g).map(part => {
+    if (/^https?:\/\//.test(part)) {
+      try {
+        const url = new URL(part);
+        if (!url.username && !url.password)
+          return `<a href="${escapeEmailHtml(url.href)}">${escapeEmailHtml(part)}</a>`;
+      } catch { /* Render invalid links as escaped text. */ }
+    }
+    return escapeEmailHtml(part).replace(/\r?\n/g, "<br />");
+  }).join("");
+  return `<div style="font-family:Arial,sans-serif;line-height:1.6">${html}</div>`;
+}
 export function htmlEmailText(html: string) {
   return html.replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, "").replace(/<br\s*\/?\s*>|<\/(?:p|div|tr|h[1-6])>/gi, "\n").replace(/<[^>]*>/g, "").replace(/&(?:amp|lt|gt|quot|#39|nbsp);/g, entity => ({ "&amp;": "&", "&lt;": "<", "&gt;": ">", "&quot;": '"', "&#39;": "'", "&nbsp;": " " }[entity]!)).replace(/\n{3,}/g, "\n\n").trim();
 }
-export const templateExampleValues: Record<string, string> = { name: "Sample Student", fullName: "Sample Student", student_name: "Sample Student", email: "student@example.com", reference: "REG-SAMPLE", reference_no: "REG-SAMPLE", intake: "Unicom TIC Intake", institution: "Unicom TIC", formTitle: "Registration form", title: "Registration form", workshop: "Introduction workshop", interview: "Admissions interview", date: "30 October 2026, 09:00", submission_date: "2026-10-27", venue: "Training centre", address: "Jaffna", district: "Jaffna", phone: "0770000000", submissionType: "registration", registrationCount: "25", applicationCount: "12", studentId: "TIC-SAMPLE", rank: "3", daysBefore: "1", purpose: "view your admissions progress" };
+export const templateExampleValues: Record<string, string> = { name: "Sample Student", fullName: "Sample Student", student_name: "Sample Student", email: "student@example.com", reference: "REG-SAMPLE", reference_no: "REG-SAMPLE", intake: "Unicom TIC Intake", institution: "Unicom TIC", formTitle: "Registration form", title: "Registration form", applicationUrl: "https://uticx.com/form/tic-2027-application", startTime: "09:00", endTime: "12:00", mapsUrl: "https://maps.google.com/?q=Jaffna", workshop: "Introduction workshop", interview: "Admissions interview", date: "30 October 2026, 09:00", submission_date: "2026-10-27", venue: "Training centre", address: "Jaffna", district: "Jaffna", phone: "0770000000", submissionType: "registration", registrationCount: "25", applicationCount: "12", studentId: "TIC-SAMPLE", rank: "3", daysBefore: "1", purpose: "view your admissions progress" };

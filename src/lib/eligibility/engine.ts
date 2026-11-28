@@ -92,14 +92,25 @@ export function evaluateCandidates(
   }
 
   // Sort eligible candidates by score descending and apply tie-breaker
+  const profiles = new Map(candidates.map(candidate => [candidate.studentId, candidate]));
   eligibleCandidates.sort((a, b) => {
     const scoreA = a.examScore ?? 0;
     const scoreB = b.examScore ?? 0;
     if (scoreB !== scoreA) {
       return scoreB - scoreA;
     }
-    // Tie-breaker
-    return a.studentName.localeCompare(b.studentName);
+    const profileA = profiles.get(a.studentId)!, profileB = profiles.get(b.studentId)!;
+    if ((criteria.tieBreakRule || "higher_al_results") === "higher_al_results") {
+      const zA = Number.isFinite(profileA.alZScore) ? profileA.alZScore! : -Infinity;
+      const zB = Number.isFinite(profileB.alZScore) ? profileB.alZScore! : -Infinity;
+      if (zA !== zB) return zB > zA ? 1 : -1;
+    }
+    if (criteria.tieBreakRule === "earlier_registration") {
+      const dateA = Date.parse(profileA.registrationDate), dateB = Date.parse(profileB.registrationDate);
+      const timeA = Number.isFinite(dateA) ? dateA : Infinity, timeB = Number.isFinite(dateB) ? dateB : Infinity;
+      if (timeA !== timeB) return timeA < timeB ? -1 : 1;
+    }
+    return a.studentName.localeCompare(b.studentName) || a.studentId.localeCompare(b.studentId);
   });
 
   // Assign ranks

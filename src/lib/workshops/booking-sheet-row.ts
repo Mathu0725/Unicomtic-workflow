@@ -24,11 +24,32 @@ export function workshopBookingSheetRow(db: DatabaseStore, bookingId: string) {
           item.registration_id === registration.id),
     ),
     formIds = [...new Set(submissions.map((item) => item.form_id))];
+  const emailJobs = db.outbox.filter(
+    (job) =>
+      job.type === "email" &&
+      (job.payload.workshopMessage?.bookingId === booking.id ||
+        job.key === `booking:${booking.id}` ||
+        job.key.startsWith(`reminder:${booking.id}:`) ||
+        (job.payload.notificationEvent === "submission_confirmation" &&
+          submissions.some((item) => item.id === job.payload.sourceId))),
+  );
+  const lastEmail = emailJobs.at(-1);
+  const lastAcceptedEmail = [...emailJobs]
+    .reverse()
+    .find((job) => job.status === "sent");
   return {
     referenceNo: booking.id,
     bookingId: booking.id,
     workshopId: workshop.id,
     workshopTitle: workshop.title,
+    emailStatus: lastEmail?.status || "not_sent",
+    emailsAccepted: emailJobs.filter((job) => job.status === "sent").length,
+    lastEmailType:
+      lastEmail?.payload.workshopMessage?.kind ||
+      (lastEmail?.payload.notificationEvent === "submission_confirmation" ? "form_receipt" :
+      (lastEmail?.key.startsWith("reminder:") ? "scheduled" :
+        lastEmail?.key.startsWith("booking:") ? "confirmation" : "")),
+    lastEmailSentAt: lastAcceptedEmail?.completed_at || "",
     intake:
       db.campaigns.find((item) => item.id === workshop.campaign_id)?.title ||
       "",
@@ -40,6 +61,7 @@ export function workshopBookingSheetRow(db: DatabaseStore, bookingId: string) {
     phone: student.phone,
     whatsapp: student.whatsapp || "",
     nic: student.nic,
+    utNumber: student.ut_number || "",
     district: student.district,
     province: student.province,
     bookingStatus: booking.status,
@@ -54,7 +76,7 @@ export function workshopBookingSheetRow(db: DatabaseStore, bookingId: string) {
     address: workshop.address,
     attendanceStatus: attendance?.status || "unmarked",
     attendanceMarkedAt: attendance?.marked_at || "",
-    studentExamId: attendance?.student_exam_id || "",
+    studentExamId: student.ut_number || attendance?.student_exam_id || "",
     sourceFormIds: formIds.join(", "),
     sourceForms: formIds
       .map((id) => db.customForms.find((item) => item.id === id)?.title || id)

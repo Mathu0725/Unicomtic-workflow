@@ -1,4 +1,6 @@
+import type { EmailWorkflowSettings } from "./email/workflow-settings";
 export interface PortalSettings {
+    emailWorkflow?: EmailWorkflowSettings;
     version: number;
     termsVersion: string;
     termsContent: string;

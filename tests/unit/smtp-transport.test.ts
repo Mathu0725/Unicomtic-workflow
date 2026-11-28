@@ -58,6 +58,23 @@ const payload = {
   html: "<p>Saved</p>",
   messageId: "<stable-job@portal.test>",
 };
+it("passes saved attachment bytes to SMTP and Gmail MIME composition without file or URL access", async () => {
+  const attachment = { filename: "contract.pdf", contentType: "application/pdf", content: Buffer.from("%PDF-1.7\ncontract").toString("base64") };
+  const db = new DatabaseStore();
+  const smtp = await databaseContext.run(db, () => sendEmail({ ...payload, attachments: [attachment] }, config()));
+  expect(smtp.success).toBe(true);
+  expect(mocks.send).toHaveBeenLastCalledWith(expect.objectContaining({
+    attachments: [{ filename: attachment.filename, contentType: attachment.contentType, content: Buffer.from(attachment.content, "base64") }],
+    disableFileAccess: true, disableUrlAccess: true,
+  }));
+  // Gmail uses the same MIME options before its API call.
+  db.integrations.google = { email: "sender@example.com", refresh_token: "unused-test", scopes: [], connected_at: new Date().toISOString() };
+  mocks.send.mockClear();
+  mocks.send.mockResolvedValueOnce({ message: "stop-before-api" });
+  await databaseContext.run(db, () => sendEmail({ ...payload, smtpAccountId: "gmail", attachments: [attachment] }));
+  expect(mocks.send).toHaveBeenCalledTimes(1);
+  expect(mocks.send).toHaveBeenLastCalledWith(expect.objectContaining({ attachments: [expect.objectContaining({ filename: "contract.pdf", content: Buffer.from(attachment.content, "base64") })] }));
+});
 it.each([
   "127.0.0.1",
   "10.1.2.3",

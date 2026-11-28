@@ -179,7 +179,7 @@ export class GoogleSheetsService {
       for (const row of uniqueRows) {
         const rowNumber = index.get(row.referenceNo);
         const cells = headers.map((h) =>
-          workshopId && rowNumber && !Object.hasOwn(row, h)
+          rowNumber && !Object.hasOwn(row, h)
             ? values[rowNumber - 1]?.[originalHeaders.indexOf(h)] || ""
             : cellValue(row[h]),
         );

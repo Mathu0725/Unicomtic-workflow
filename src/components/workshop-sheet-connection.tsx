@@ -341,8 +341,11 @@ export default function WorkshopSheetConnection({
             </button>
           </fieldset>
           <p className="text-xs text-slate-500">
-            Includes name, registration/application reference, contact details,
-            NIC, district, booking time and attendance. Keep this spreadsheet
+            Each row includes this workshop's name, participant details, booking
+            and attendance, plus email status and the number of emails accepted
+            by the provider. Manual-only connections update these columns on
+            the next sync. Existing booking rows are updated by booking ID, so
+            syncing again does not add duplicate rows. Keep this spreadsheet
             private. The connected Google account needs Editor access. Sync runs
             through the background queue; saving a booking does not wait for
             Google.

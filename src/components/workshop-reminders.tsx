@@ -33,7 +33,7 @@ export default function WorkshopReminders({
     try {
       const p = await api(endpoint + "?kind=" + kind, undefined, "GET");
       setPreview(p);
-      setSelected(p.recipients.map((r: Preview["recipients"][number]) => r.id));
+      setSelected(p.recipients.filter((r: Preview["recipients"][number]) => !r.alreadyNotified).map((r: Preview["recipients"][number]) => r.id));
     } catch (e) {
       setError(
         e instanceof Error ? e.message : "Could not preview recipients.",
@@ -122,7 +122,8 @@ export default function WorkshopReminders({
         <h2 className="font-bold">Send to this workshop's participants</h2>
         <p className="text-sm text-slate-600">
           Preview the exact message and confirmed recipients. Cancelled and
-          moved bookings are excluded.
+          moved bookings are excluded. Earlier recipients remain in delivery
+          history; only new participants are selected for this reminder.
         </p>
         <div className="flex flex-wrap gap-3">
           <label className="text-sm">
@@ -151,8 +152,7 @@ export default function WorkshopReminders({
         {preview && (
           <div className="space-y-3">
             <p className="text-sm font-semibold">
-              {selected.length} of {preview.recipients.length} eligible
-              participants selected · Preview expires{" "}
+              {selected.length} selected · {preview.recipients.filter((r) => !r.alreadyNotified).length} new recipients · {preview.recipients.filter((r) => r.alreadyNotified).length} with an existing email record · Preview expires{" "}
               {new Date(preview.expiresAt).toLocaleTimeString()}
             </p>
             <label className="flex gap-2 text-sm">
@@ -160,12 +160,12 @@ export default function WorkshopReminders({
                 type="checkbox"
                 disabled={busy}
                 checked={
-                  selected.length === preview.recipients.length &&
+                  selected.length === preview.recipients.filter((r) => !r.alreadyNotified).length &&
                   selected.length > 0
                 }
                 onChange={(e) =>
                   setSelected(
-                    e.target.checked ? preview.recipients.map((r) => r.id) : [],
+                    e.target.checked ? preview.recipients.filter((r) => !r.alreadyNotified).map((r) => r.id) : [],
                   )
                 }
               />
@@ -177,7 +177,7 @@ export default function WorkshopReminders({
                   <label className="flex gap-2">
                     <input
                       type="checkbox"
-                      disabled={busy}
+                      disabled={busy || r.alreadyNotified}
                       checked={selected.includes(r.id)}
                       onChange={(e) =>
                         setSelected((ids) =>
@@ -191,10 +191,9 @@ export default function WorkshopReminders({
                       {r.name} · {r.email} · {r.phone}
                     </span>
                   </label>
-                  {r.recent && (
+                  {r.alreadyNotified && (
                     <p className="mt-1 text-xs text-amber-800">
-                      A message was queued or sent to this booking in the last
-                      24 hours. This will be a new email.
+                      This {kind === "manual" ? "reminder" : "version of the update"} has an existing {r.deliveryStatus} record. Review delivery history or Email Center before retrying it.
                     </p>
                   )}
                   <details className="mt-2">

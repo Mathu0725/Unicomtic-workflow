@@ -30,11 +30,12 @@ const cache = new Map<string, {
     expires: number;
 }>();
 export function clearGoogleTokenCache() { cache.clear(); }
-export async function googleAccessToken() {
+export async function googleAccessToken(scope?: typeof GOOGLE_DRIVE_SCOPE) {
     const connection = getDb().integrations.google;
     if (!connection)
         throw new ProviderError("GOOGLE_NOT_CONNECTED", "Connect Google in Google Integrations.", "blocked", 0, "reconnect_google");
-    const cached = cache.get(connection.refresh_token);
+    const cacheKey = `${connection.refresh_token}:${scope || "all"}`;
+    const cached = cache.get(cacheKey);
     if (cached && cached.expires > Date.now())
         return cached.token;
     const { clientId, clientSecret, ready } = googleConfig();
@@ -43,16 +44,26 @@ export async function googleAccessToken() {
     let refreshToken: string;
     try { refreshToken = decrypt(connection.refresh_token); }
     catch { throw new ProviderError("GOOGLE_TOKEN_UNREADABLE", "Google authorization cannot be read. Check the server key or reconnect Google.", "blocked", 0, "reconnect_google"); }
-    const response = await fetch("https://oauth2.googleapis.com/token", {
-        method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({ client_id: clientId, client_secret: clientSecret, grant_type: "refresh_token", refresh_token: refreshToken }),
-        signal: AbortSignal.timeout(10000),
-    });
-    const data = await response.json();
+    let response: Response;
+    try {
+        response = await fetch("https://oauth2.googleapis.com/token", {
+            method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body: new URLSearchParams({ client_id: clientId, client_secret: clientSecret, grant_type: "refresh_token", refresh_token: refreshToken, ...(scope ? { scope } : {}) }),
+            signal: AbortSignal.timeout(10000),
+        });
+    } catch {
+        throw new ProviderError("GOOGLE_TOKEN_UNAVAILABLE", "Could not reach Google to refresh the connection. Check your internet connection and try again.", "temporary");
+    }
+    let data: any;
+    try { data = await response.json(); }
+    catch { throw new ProviderError("GOOGLE_TOKEN_UNAVAILABLE", "Google did not return a valid authorization response. Please try again.", "temporary"); }
     if (!response.ok)
         throw new ProviderError(data.error === "invalid_grant" ? "GOOGLE_AUTH_REVOKED" : "GOOGLE_TOKEN_FAILED", data.error === "invalid_grant" ? "Google authorization expired or was revoked. Reconnect Google." : "Google token refresh failed. Review the OAuth connection.", response.status >= 500 || response.status === 429 ? "temporary" : "blocked", retryAfterMs(response.headers.get("retry-after")), "reconnect_google");
     if (!data.access_token || !Number.isFinite(Number(data.expires_in))) throw new ProviderError("GOOGLE_TOKEN_FAILED", "Google returned an invalid authorization response.", "temporary");
-    cache.set(connection.refresh_token, { token: data.access_token, expires: Date.now() + Math.max(0, data.expires_in - 120) * 1000 });
+    // Never expose a token with Gmail or other privileges to the browser.
+    if (scope && (typeof data.scope !== "string" || data.scope.split(/\s+/).filter(Boolean).some((granted: string) => granted !== scope) || !data.scope.split(/\s+/).includes(scope)))
+        throw new ProviderError("GOOGLE_PICKER_SCOPE_INVALID", "Google could not provide a restricted Drive token. Reconnect Google and try again.", "blocked", 0, "reconnect_google");
+    cache.set(cacheKey, { token: data.access_token, expires: Date.now() + Math.max(0, data.expires_in - 120) * 1000 });
     return data.access_token as string;
 }
 export async function googleRequest(url: string, init: RequestInit = {}) {

@@ -1,4 +1,5 @@
 import nodemailer from "nodemailer";
+import { emailAttachmentsSchema, type EmailAttachment } from "./attachments";
 import { getDb } from "../data/store";
 import { decrypt } from "../security/secrets";
 import { googleRequest } from "../google/oauth";
@@ -29,6 +30,7 @@ export interface SmtpConfig {
   timeoutMs?: number;
 }
 export interface SendEmailPayload {
+  attachments?: EmailAttachment[];
   to: string;
   toName?: string;
   subject: string;
@@ -159,6 +161,9 @@ export async function sendEmail(
         "permanent",
       );
     payload = { ...payload, html: sanitizeEmailHtml(payload.html) };
+    const parsedAttachments = emailAttachmentsSchema.safeParse(payload.attachments || []);
+    if (!parsedAttachments.success) throw new ProviderError("INVALID_EMAIL_JOB", "The email attachments are invalid. Review the message before retrying.", "permanent");
+    const attachments = parsedAttachments.data.map(file => ({ filename: file.filename, contentType: file.contentType, content: Buffer.from(file.content, "base64") }));
     const accountId = payload.smtpAccountId || defaultEmailAccountId(db);
     if (!config && accountId === GMAIL_ACCOUNT) {
       if (!db.integrations.google)
@@ -184,6 +189,9 @@ export async function sendEmail(
         html: payload.html,
         text: payload.text || htmlEmailText(payload.html),
         messageId: payload.messageId,
+        attachments,
+        disableFileAccess: true,
+        disableUrlAccess: true,
       });
       if (!Buffer.isBuffer(message.message))
         throw new Error("Could not build email message.");
@@ -230,6 +238,9 @@ export async function sendEmail(
       html: payload.html,
       text: payload.text || htmlEmailText(payload.html),
       messageId: payload.messageId,
+        attachments,
+        disableFileAccess: true,
+        disableUrlAccess: true,
     });
     if (!result.accepted?.length)
       throw new ProviderError(

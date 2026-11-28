@@ -58,14 +58,19 @@ export default function FormCampaignsPage() {
   }, [load, formId, filter, page]);
   useEffect(() => {
     if (!batchId) return;
-    let active = true;
+    let active = true, inFlight = false;
     const refresh = async () => {
+      if (document.visibilityState === "hidden" || inFlight) return;
+      inFlight = true;
       try { const data = await api(`/api/admin/email/form-campaigns?batchId=${encodeURIComponent(batchId)}`, undefined, "GET"); if (active) { setProgress(data.progress); setDeliveries(data.deliveries || []); setMoreDeliveries(Boolean(data.moreDeliveries)); setRecent(data.recent || []); } }
       catch (cause) { if (active) setError((cause as Error).message); }
+      finally { inFlight = false; }
     };
     void refresh();
-    const timer = setInterval(() => void refresh(), 10000);
-    return () => { active = false; clearInterval(timer); };
+    const timer = setInterval(() => void refresh(), 30000);
+    const onVisibilityChange = () => { if (document.visibilityState !== "hidden") void refresh(); };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => { active = false; clearInterval(timer); document.removeEventListener("visibilitychange", onVisibilityChange); };
   }, [batchId]);
   const invalidate = () => { setPreview(null); setMessage(""); setError(""); };
   const payload = (attemptId?: string, recipientCount?: number) => ({

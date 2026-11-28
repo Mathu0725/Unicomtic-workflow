@@ -1,6 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  experimental: { agentUpgrade: "security" },
   distDir: process.env.NEXT_DIST_DIR || ".next",
   typescript: { tsconfigPath: process.env.NEXT_TSCONFIG_PATH || "tsconfig.json" },
   serverExternalPackages: ["nodemailer"],

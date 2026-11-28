@@ -1,6 +1,7 @@
 "use client";
 import { apiResponse } from "@/lib/client/api";
 import { Notice as RequestNotice } from "@/components/live-data";
+import { IntakeSelect, type IntakeOption } from "@/components/admissions-workflow-controls";
 
 import { useState, useEffect } from "react";
 import { 
@@ -16,6 +17,7 @@ import {
 
 export default function AdminEligibilityPage() {
   const [pageError, setPageError] = useState("");
+  const [intakes, setIntakes] = useState<IntakeOption[]>([]), [campaignId, setCampaignId] = useState("");
   const [minScore, setMinScore] = useState(50);
   const [requireAttendance, setRequireAttendance] = useState(true);
   const [requireApplication, setRequireApplication] = useState(true);
@@ -33,6 +35,7 @@ export default function AdminEligibilityPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          campaignId: campaignId || undefined,
           minExamScore: minScore,
           requireWorkshopAttendance: requireAttendance,
           requireApplicationSubmission: requireApplication,
@@ -41,6 +44,7 @@ export default function AdminEligibilityPage() {
         }),
       });
       const data = await res.json();
+      setIntakes(data.campaigns || []); setCampaignId(data.campaignId || "");
       if (data.report) {
         setReport(data.report);
       }
@@ -67,6 +71,9 @@ export default function AdminEligibilityPage() {
           </p>
         </div>
       </div>
+
+      <IntakeSelect intakes={intakes} value={campaignId} onChange={id => { if (loading) return; setCampaignId(id); setReport(null); }} />
+      {campaignId && <p className="text-sm text-slate-600">After reviewing the shortlist, <a className="font-semibold text-blue-700 underline" href={`/admin/interviews?campaignId=${encodeURIComponent(campaignId)}`}>create an interview session and choose candidates</a>.</p>}
 
       {/* Rules Config Panel */}
       <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">

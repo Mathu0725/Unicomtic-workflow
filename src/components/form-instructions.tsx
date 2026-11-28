@@ -79,7 +79,7 @@ export default function FormInstructions({ messages, enabled = true, autoOpen = 
           <button
             type="button"
             onClick={() => setOpen(false)}
-            className="w-full rounded-xl bg-[#4d4d4d] px-4 py-3 text-sm font-bold text-white hover:bg-[#333333] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-600"
+            className="w-full rounded-xl bg-blue-700 px-4 py-3 text-sm font-bold text-white hover:bg-blue-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
           >
             {copy.continueButtonLabel}
           </button>

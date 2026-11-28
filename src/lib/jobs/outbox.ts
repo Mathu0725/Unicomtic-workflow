@@ -1,3 +1,5 @@
+import { emailAttachmentsSchema } from "../email/attachments";
+import { ProviderError } from "../errors/provider-error";
 import { createHash, randomUUID } from "node:crypto";
 import { DatabaseStore, databaseContext, getDb } from "../data/store";
 import { readDatabase, transaction } from "../data/repository";
@@ -14,7 +16,11 @@ import { secureCandidateEmail } from "../security/candidate-access";
 import { defaultEmailAccountId, GMAIL_ACCOUNT } from "../email/accounts";
 import { sanitizeEmailHtml } from "../email/sanitize";
 import { workshopBookingSheetRow } from "../workshops/booking-sheet-row";
+import { queueWorkshopBooking } from "../workshops/sheet-sync";
 import { workshopEmailProblem } from "../workshops/email-policy";
+import { submissionSheetIdentity } from "../google/submission-row";
+import { decisionJobIsCurrent } from "../admissions/decision-notifications";
+import { syncFormResponses } from "../google/form-response-sync";
 export function enqueue(db: DatabaseStore, type: OutboxJob["type"], key: string, payload: Record<string, any>) {
     const existing = db.outbox.find(j => j.key === key);
     if (existing)
@@ -24,7 +30,14 @@ export function enqueue(db: DatabaseStore, type: OutboxJob["type"], key: string,
         job.email_account_id = payload.smtpAccountId || defaultEmailAccountId(db);
         job.fallback_email_account_id = payload.fallbackSmtpAccountId || undefined;
         job.initiated_by = payload.initiatedBy;
-        job.payload = { ...payload, html: sanitizeEmailHtml(String(payload.html || "")) };
+        const files = emailAttachmentsSchema.parse(payload.attachments || []);
+        const attachmentIds = files.map(file => {
+            const id = createHash("sha256").update(JSON.stringify(file)).digest("hex");
+            (db.emailAttachmentFiles ||= {})[id] = file;
+            return id;
+        });
+        const { attachments: _attachments, ...savedPayload } = payload;
+        job.payload = { ...savedPayload, ...(attachmentIds.length ? { attachmentIds } : {}), html: sanitizeEmailHtml(String(payload.html || "")) };
     }
     const blocker = db.outbox.find(j => j.status === "blocked" && !["CANDIDATE_EXPORT_CHANGED","SHEET_DESTINATION_CHANGED","WORKSHOP_BOOKING_MISSING"].includes(j.error_code || "") && (type === "sheet" ? j.type === "sheet" && (j.payload.sheetId === payload.sheetId && j.payload.sheetName === payload.sheetName || ["GOOGLE_AUTH_REVOKED", "GOOGLE_NOT_CONNECTED", "GOOGLE_NOT_CONFIGURED", "GOOGLE_TOKEN_UNREADABLE"].includes(j.error_code || "")) : j.type === "email" && (j.email_account_id || defaultEmailAccountId(db)) === job.email_account_id && !job.fallback_email_account_id && j.error_code?.startsWith(job.email_account_id === GMAIL_ACCOUNT ? "GOOGLE_" : "SMTP_")));
     if (blocker) { job.status = "blocked"; job.error = blocker.error; job.error_code = blocker.error_code; job.repair_action = blocker.repair_action; }
@@ -41,8 +54,11 @@ export function queueEmail(payload: SendEmailPayload & {
 }
 export function queueSheet(db: DatabaseStore, sheetId: string, sheetName: string, row: Record<string, any>, sourceId?: string) {
     const legacyKey = `sheet:${sheetId}:${sheetName}:${row.referenceNo}:${JSON.stringify(row)}`;
-    const key = `sheet:${createHash("sha256").update(legacyKey).digest("hex")}`;
-    return db.outbox.find(job => job.key === legacyKey) || enqueue(db, "sheet", key, { sheetId, sheetName, rows: [row], sourceId });
+    const sub = sourceId ? db.formSubmissions.find(item => item.id === sourceId) : undefined;
+    const form = sub ? db.customForms.find(item => item.id === sub.form_id) : undefined;
+    const cleanExport = Boolean(form?.google_sheets_config?.enabled && form.google_sheets_config.clean_export);
+    const key = `sheet:${createHash("sha256").update(cleanExport ? `${legacyKey}:clean-v1` : legacyKey).digest("hex")}`;
+    return (!cleanExport && db.outbox.find(job => job.key === legacyKey)) || enqueue(db, "sheet", key, { sheetId, sheetName, rows: [row], sourceId, ...(cleanExport ? { cleanExport: true } : {}) });
 }
 async function commit<T>(fn: (db: DatabaseStore) => Promise<T> | T): Promise<T> {
     return transaction(fn, { maxConflictRetries: 8 });
@@ -55,6 +71,9 @@ export async function processOutbox(limit = 120, timeBudgetMs = 45000, onlyJobId
             break;
         const claim = await commit(db => {
             const now = Date.now();
+            for (const item of db.outbox.filter(j => j.type === "email" && j.status === "queued" && !decisionJobIsCurrent(db, j))) {
+                item.status = "failed"; item.error_code = "DECISION_SUPERSEDED"; item.error = "The decision changed before this notification was sent.";
+            }
             for (const item of db.outbox.filter(j => j.type === "email" && j.status === "queued")) {
                 const problem = workshopEmailProblem(db, item, now);
                 if (problem) { item.status = "blocked"; item.error_code = "WORKSHOP_MESSAGE_SUPERSEDED"; item.error = problem; item.repair_action = "review_workshop"; }
@@ -89,6 +108,12 @@ export async function processOutbox(limit = 120, timeBudgetMs = 45000, onlyJobId
                 if(row&&row.workshopId===item.payload.workshopId)item.payload.rows=[row];
                 else {item.status="blocked";item.error_code="WORKSHOP_BOOKING_MISSING";item.error="This booking or its linked student no longer exists. Review workshop bookings before exporting.";}
             }
+            // Upgrade unsent legacy response jobs too; otherwise old queued keys
+            // can still overwrite another form's response after this release.
+            for (const item of db.outbox.filter(j => j.status === "queued" && j.type === "sheet" && !j.payload.workshopId && j.payload.sourceId)) {
+                const sub = db.formSubmissions.find(s => s.id === item.payload.sourceId);
+                if (sub && Array.isArray(item.payload.rows)) item.payload.rows = item.payload.rows.map((row: Record<string, unknown>) => ({ ...row, ...submissionSheetIdentity(sub) }));
+            }
             const busySheets = db.outbox.some(j => j.type === "sheet" && j.status === "sending");
             const budgets = new Map<string, ReturnType<typeof emailBudget>>();
             const jobBudget = (job: OutboxJob) => { const id = job.email_account_id || defaultEmailAccountId(db); if (!budgets.has(id)) budgets.set(id, emailBudget(db,now,emailSender(db,id),id)); return budgets.get(id)!; };
@@ -113,7 +138,8 @@ export async function processOutbox(limit = 120, timeBudgetMs = 45000, onlyJobId
                 ));
                 return { jobs: [] as OutboxJob[], waitMs: readyTimes.length ? readyTimes.reduce((min, value) => Math.min(min, value), Infinity) - now : 0 };
             }
-            const candidates = next.type === "sheet" ? db.outbox.filter(j => due(j) && j.type === "sheet" && j.payload.sheetId === next.payload.sheetId && j.payload.sheetName === next.payload.sheetName && j.payload.workshopId === next.payload.workshopId).slice(0, Math.min(100, limit - processed)) : [next];
+            const responseGroup = (job: OutboxJob) => job.payload.cleanExport && job.payload.sourceId ? db.formSubmissions.find(sub => sub.id === job.payload.sourceId)?.form_id || `missing:${job.payload.sourceId}` : "";
+            const candidates = next.type === "sheet" ? db.outbox.filter(j => due(j) && j.type === "sheet" && j.payload.sheetId === next.payload.sheetId && j.payload.sheetName === next.payload.sheetName && j.payload.workshopId === next.payload.workshopId && responseGroup(j) === responseGroup(next)).slice(0, Math.min(100, limit - processed)) : [next];
             const batch: OutboxJob[] = [];
             let bytes = 0;
             for (const candidate of candidates) {
@@ -153,6 +179,7 @@ export async function processOutbox(limit = 120, timeBudgetMs = 45000, onlyJobId
         try {
             const db = await readDatabase();
             result = await databaseContext.run(db, async () => {
+            if (!decisionJobIsCurrent(db, job)) return { success: false, error: "This notification belongs to an older decision.", errorCode: "DECISION_SUPERSEDED", failureKind: "permanent" as const };
             const workshopProblem = workshopEmailProblem(db, job);
             if (workshopProblem) return { success: false, error: workshopProblem, errorCode: "WORKSHOP_MESSAGE_SUPERSEDED", failureKind: "permanent" as const };
             if (job.type === "email" && job.sender_identity !== emailSender(db, job.email_account_id)) return { success: false, error: "The sending account changed. This email will retry using the selected account's allowance.", errorCode: "EMAIL_SENDER_CHANGED", failureKind: "temporary" as const };
@@ -167,10 +194,23 @@ export async function processOutbox(limit = 120, timeBudgetMs = 45000, onlyJobId
                 const currentEmail = student?.email || response?.data?.email;
                 if (!response || String(currentEmail || "").trim().toLowerCase() !== String(job.payload.to).trim().toLowerCase()) return { success: false, error: "The form response or registered email changed after scheduling. Review recipients and create a new campaign.", errorCode: "FORM_CAMPAIGN_CONTACT_CHANGED", failureKind: "permanent" as const };
             }
-            if (job.type === "email")
-                return sendEmail({ ...secureCandidateEmail(db, job.payload), smtpAccountId: job.email_account_id, messageId: `<${job.id}@unicom-tic.local>` } as SendEmailPayload);
+            if (job.type === "email") {
+                const attachments = (job.payload.attachmentIds || []).map((id: string) => {
+                    const file = db.emailAttachmentFiles?.[id];
+                    if (!file) throw new ProviderError("EMAIL_ATTACHMENT_MISSING", "An email attachment is missing. Review the saved message before retrying.", "permanent");
+                    return file;
+                });
+                return sendEmail({ ...secureCandidateEmail(db, job.payload), ...(attachments.length ? { attachments } : {}), smtpAccountId: job.email_account_id, messageId: `<${job.id}@unicom-tic.local>` } as SendEmailPayload);
+            }
             const rows = jobs.flatMap(item => item.payload.rows);
-            const res = job.payload.workshopId ? await googleSheetsService.syncWorkshopBookings(job.payload.sheetId,job.payload.sheetName,job.payload.workshopId,rows) : await googleSheetsService.syncRecords(job.payload.sheetId, "registrations", rows, job.payload.sheetName);
+            let res;
+            if (job.payload.workshopId) res = await googleSheetsService.syncWorkshopBookings(job.payload.sheetId,job.payload.sheetName,job.payload.workshopId,rows);
+            else if (job.payload.cleanExport && job.payload.sourceId) {
+                const submissions = jobs.map(item => db.formSubmissions.find(sub => sub.id === item.payload.sourceId));
+                const form = db.customForms.find(item => item.id === submissions[0]?.form_id);
+                if (!form || submissions.some(sub => !sub || sub.form_id !== form.id)) throw new ProviderError("FORM_RESPONSE_MISSING", "The form or a response is unavailable. Review the form before exporting.", "blocked", 0, "repair_configuration");
+                res = await syncFormResponses(db, form, submissions.filter((sub): sub is NonNullable<typeof sub> => Boolean(sub)), job.payload.sheetId, job.payload.sheetName);
+            } else res = await googleSheetsService.syncRecords(job.payload.sheetId, "registrations", rows, job.payload.sheetName);
             return { success: res.success, error: res.error, provider: "google_sheets", messageId: job.payload.sheetId, uncertain: false, retryAfterMs: res.retryAfterMs, errorCode: res.errorCode, failureKind: res.failureKind, action: res.action };
             });
         } catch (error: any) {
@@ -211,7 +251,13 @@ export async function processOutbox(limit = 120, timeBudgetMs = 45000, onlyJobId
                         sub.email_sent = true;
                 }
                 const decision = state.selectionDecisions.find(d => d.id === job.payload.decisionId);
-                if (decision) {
+                if (job.payload.workshopMessage?.kind === "confirmation") {
+                    const booking = state.workshopBookings.find(b => b.id === job.payload.workshopMessage.bookingId);
+                    if (booking) for (const response of state.formSubmissions) {
+                        if (booking.source_submission_ids?.includes(response.id) && state.customForms.some(f => f.id === response.form_id && f.type === "workshop_rsvp")) response.email_sent = true;
+                    }
+                }
+                if (decision && decisionJobIsCurrent(state, job)) {
                     decision.notification_status = "sent";
                     decision.notified_at = saved.completed_at;
                 }
@@ -230,8 +276,17 @@ export async function processOutbox(limit = 120, timeBudgetMs = 45000, onlyJobId
                     saved.next_attempt_at = new Date(Date.now() + 60000).toISOString();
                 }
                 const decision = state.selectionDecisions.find(d => d.id === job.payload.decisionId);
-                if (decision)
+                if (decision && decisionJobIsCurrent(state, job))
                     decision.notification_status = "failed";
+            }
+            if (job.type === "email") {
+                const bookingId = job.payload.workshopMessage?.bookingId;
+                if (bookingId) queueWorkshopBooking(state, bookingId);
+                else if (job.payload.notificationEvent === "submission_confirmation" && job.payload.sourceId) {
+                    const response = state.formSubmissions.find(item => item.id === job.payload.sourceId);
+                    if (response?.workshop_id) for (const booking of state.workshopBookings.filter(item => item.workshop_id === response.workshop_id && item.registration_id === response.registration_id))
+                        queueWorkshopBooking(state, booking.id);
+                }
             }
           }
           if (result.failureKind === "blocked") {

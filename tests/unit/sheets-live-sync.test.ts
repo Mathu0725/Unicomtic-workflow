@@ -5,6 +5,25 @@ import { GoogleSheetsService } from "../../src/lib/google/sheets-service";
 import { ProviderError } from "../../src/lib/errors/provider-error";
 beforeEach(() => { request.mockReset(); });
 describe("Google Sheets reference reconciliation", () => {
+    it("updates a manually connected workshop row's mail status and keeps staff notes while adding only new bookings", async () => {
+        request.mockResolvedValueOnce({ sheets: [{ properties: { title: "Workshop 1" } }] })
+            .mockResolvedValueOnce({ values: [
+                ["referenceNo", "bookingId", "workshopId", "workshopTitle", "emailStatus", "emailsAccepted", "staffNotes"],
+                ["booking-1", "booking-1", "workshop-1", "Workshop 1", "queued", "0", "Call after 5"],
+            ] }).mockResolvedValue({});
+        const result = await new GoogleSheetsService().syncWorkshopBookings("sheet123", "Workshop 1", "workshop-1", [
+            { referenceNo: "booking-1", bookingId: "booking-1", workshopId: "workshop-1", workshopTitle: "Workshop 1", emailStatus: "sent", emailsAccepted: 1 },
+            { referenceNo: "booking-2", bookingId: "booking-2", workshopId: "workshop-1", workshopTitle: "Workshop 1", emailStatus: "not_sent", emailsAccepted: 0 },
+        ]);
+        expect(result.success).toBe(true);
+        const update = request.mock.calls.find(([url]) => url.includes("values:batchUpdate"));
+        expect(JSON.parse(update![1].body).data).toContainEqual({
+            range: "'Workshop 1'!A2",
+            values: [["booking-1", "booking-1", "workshop-1", "Workshop 1", "sent", "1", "Call after 5"]],
+        });
+        const append = request.mock.calls.find(([url]) => url.includes(":append"));
+        expect(JSON.parse(append![1].body).values).toEqual([["booking-2", "booking-2", "workshop-1", "Workshop 1", "not_sent", "0", ""]]);
+    });
     it("updates an existing reference instead of appending a duplicate row", async () => {
         request.mockResolvedValueOnce({ sheets: [{ properties: { title: "Registrations" } }] }).mockResolvedValueOnce({ values: [["referenceNo", "fullName"], ["REG-123", "Old name"]] }).mockResolvedValue({});
         const result = await new GoogleSheetsService().syncRecords("sheet123", "registrations", [{ referenceNo: "REG-123", fullName: "Updated name" }]);

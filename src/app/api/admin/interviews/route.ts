@@ -7,8 +7,11 @@ import { admissionEmailVariables, renderNotification } from "@/lib/email/notific
 import { interviewCreateSchema, interviewAssignSchema, requireCampaign, requireStudentInCampaign } from "@/lib/validations/admin";
 import { interviewEvaluationSchema } from "@/lib/validations/interview";
 import { RequestError } from "@/lib/http";
+import { randomUUID } from "node:crypto";
+import { getSession } from "@/lib/security/session";
+import { workflowOptions } from "@/lib/admissions/staff-workflow";
 
-async function handleGET() {
+async function handleGET(req: NextRequest) {
   const db = getDb();
   const interviewsWithCandidates = db.interviews.map((intv) => {
     const candidates = db.interviewCandidates
@@ -33,7 +36,7 @@ async function handleGET() {
     };
   });
 
-  return NextResponse.json({ success: true, interviews: interviewsWithCandidates });
+  return NextResponse.json({ success: true, interviews: interviewsWithCandidates, ...workflowOptions(db), interviewerName: getSession(req)!.name || getSession(req)!.email });
 }
 
 async function handlePOST(req: NextRequest) {
@@ -46,7 +49,7 @@ async function handlePOST(req: NextRequest) {
       const { campaignId, title, date, venue, meetingUrl, panelMembers } = interviewCreateSchema.parse(body);
       const campaign = requireCampaign(campaignId);
       const newInterview = {
-        id: `int-${Date.now()}`,
+        id: `int-${randomUUID()}`,
         campaign_id: campaign.id,
         title,
         date,
@@ -65,15 +68,16 @@ async function handlePOST(req: NextRequest) {
       if (!intv) return NextResponse.json({ success: false, message: "Interview not found" }, { status: 404 });
       if (intv.status === "completed") throw new RequestError("This interview is completed.", 409);
       studentIds.forEach(id => requireStudentInCampaign(id, intv.campaign_id));
-      if (studentIds.some((_, idx) => db.interviewCandidates.some(c => c.interview_id === interviewId && !studentIds.includes(c.student_id) && c.status !== "cancelled" && c.time_slot === new Date(Date.parse(startTime || intv.date) + idx * 30 * 60000).toISOString()))) throw new RequestError("An interview time slot is already occupied. Choose a different start time.", 409);
+      const newStudentIds = studentIds.filter(id => !db.interviewCandidates.some(c => c.interview_id === interviewId && c.student_id === id));
+      if (newStudentIds.some((_, idx) => db.interviewCandidates.some(c => c.interview_id === interviewId && c.status !== "cancelled" && Date.parse(c.time_slot) === Date.parse(startTime || intv.date) + idx * 30 * 60000))) throw new RequestError("An interview time slot is already occupied. Choose a different start time.", 409);
 
       let assignedCount = 0;
-      studentIds.forEach((studentId: string, idx: number) => {
+      newStudentIds.forEach((studentId: string, idx: number) => {
         const existing = db.interviewCandidates.find(
           (ic) => ic.interview_id === interviewId && ic.student_id === studentId
         );
         if (!existing) {
-          const candidateId = `ic-${Date.now()}-${idx}`;
+          const candidateId = `ic-${randomUUID()}`;
           const slot = new Date(new Date(startTime || intv.date).getTime() + idx * 30 * 60000).toISOString();
           db.interviewCandidates.push({
             id: candidateId,
@@ -105,9 +109,9 @@ async function handlePOST(req: NextRequest) {
       if (!candidate || candidate.status === "cancelled") throw new RequestError("Select an available interview candidate.", 404);
 
       const evalRecord = {
-        id: `eval-${Date.now()}`,
+        id: `eval-${randomUUID()}`,
         candidate_id: candidateId,
-        interviewer_name: interviewerName,
+        interviewer_name: getSession(req)!.name || getSession(req)!.email,
         communication_score: Number(communicationScore),
         technical_score: Number(technicalScore),
         analytical_score: Number(analyticalScore),

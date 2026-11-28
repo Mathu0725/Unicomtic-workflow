@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { DatabaseStore, databaseContext } from "./store";
 import { createAdminClient } from "../supabase/admin";
 import { AppError } from "../errors/app-error";
-import { recordEvent } from "../observability/logger";
+import { recordEvent, requestContext } from "../observability/logger";
 type Snapshot = {
     version: number;
     data: DatabaseStore;
@@ -56,8 +56,11 @@ function hydrate(data: DatabaseStore): DatabaseStore {
 }
 async function load(): Promise<Snapshot> {
     if (storageMode() === "supabase") {
+        const readStarted = Date.now();
         const client = createAdminClient();
         const { data, error } = await client.from("platform_state").select("version,data").eq("id", "admissions").maybeSingle();
+        const context = requestContext.getStore();
+        if (context) context.databaseReadMs = (context.databaseReadMs || 0) + Date.now() - readStarted;
         if (error)
             throw new AppError("DATABASE_UNAVAILABLE", "Admissions storage is temporarily unavailable. Please retry with the same submission.", 503, {}, true, "retry");
         if (!data && process.env.NODE_ENV === "production" && process.env.ALLOW_DATABASE_INITIALIZE !== "true") throw new AppError("STORAGE_MISSING", "Admissions records are missing. Restore the database or explicitly authorize first-time initialization.", 503, {}, false, "contact_admissions");
@@ -104,8 +107,8 @@ async function save(snapshot: Snapshot, serialized: string): Promise<void> {
         for (let attempt = 0;; attempt++) {
             try { await rename(temp, statePath()); break; }
             catch (error: any) {
-                if (!["EPERM", "EBUSY", "EACCES"].includes(error.code) || attempt >= 4) throw error;
-                await new Promise(resolve => setTimeout(resolve, 10 * (attempt + 1)));
+                if (!["EPERM", "EBUSY", "EACCES"].includes(error.code) || attempt >= 20) throw error;
+                await new Promise(resolve => setTimeout(resolve, 10 * (attempt + 1) + Math.random() * 10));
             }
         }
         try {
@@ -215,3 +218,18 @@ export async function transaction<T>(fn: (db: DatabaseStore) => Promise<T> | T, 
     }
 }
 export async function readDatabase() { return (await load()).data; }
+
+/**
+ * Handles the common idle scheduler tick inside Postgres. This avoids returning
+ * the full admissions snapshot to the worker every minute when there is no work.
+ * Missing/unavailable RPC support intentionally falls back to the normal path.
+ */
+export async function tryIdleQueueWorkerTick(): Promise<"idle" | "already_running" | "needs_processing" | "unsupported"> {
+    if (storageMode() !== "supabase") return "unsupported";
+    const started = Date.now();
+    const { data, error } = await createAdminClient().rpc("try_idle_queue_worker_tick");
+    const context = requestContext.getStore();
+    if (context) context.databaseReadMs = (context.databaseReadMs || 0) + Date.now() - started;
+    if (error) return "unsupported";
+    return data === "idle" || data === "already_running" || data === "needs_processing" ? data : "unsupported";
+}

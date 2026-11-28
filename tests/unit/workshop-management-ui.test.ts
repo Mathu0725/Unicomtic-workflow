@@ -18,6 +18,7 @@ import WorkshopSettings from "../../src/components/form-builder/workshop-setting
 import WorkshopParticipants from "../../src/components/workshop-participants";
 import WorkshopReminders from "../../src/components/workshop-reminders";
 import WorkshopsPage from "../../src/app/admin/workshops/page";
+import FormThankYou from "../../src/components/form-thank-you";
 const mocks = vi.hoisted(() => ({
   api: vi.fn(),
   submit: vi.fn(),
@@ -71,6 +72,7 @@ function details(): ReturnType<typeof workshopDetail> {
         referenceNo: "REG-001",
         applicationNo: "APP-001",
         attendanceStatus: "unmarked",
+        utNumber: "",
         attendance: undefined,
         sourceForms: ["Registration form"],
         emailStatus: "queued",
@@ -101,6 +103,7 @@ beforeEach(() => {
     success: true,
     workshop: w,
     campaigns: [{ id: "intake", title: "Intake" }],
+    forms: [], templates: [],
   });
   mocks.submit.mockImplementation(
     async () =>
@@ -126,6 +129,23 @@ beforeEach(() => {
   };
 });
 afterEach(() => cleanup());
+it("selects a live form when creating and passes its version for safe publication", async () => {
+  mocks.api.mockResolvedValue({ forms: [{ id: "form-1", title: "Workshop RSVP", campaignId: "intake", updatedAt: "version-1", draftVersion: null, status: "Live" }], templates: [] });
+  render(createElement(WorkshopEditor, { workshop: w, duplicate: true, allowAttachments: true, onSaved: vi.fn() }));
+  fireEvent.change(screen.getByLabelText("Starts (your local time)"), { target: { value: "2030-11-15T09:00" } });
+  fireEvent.change(screen.getByLabelText("Ends (your local time)"), { target: { value: "2030-11-15T12:00" } });
+  fireEvent.change(screen.getByLabelText("Google Maps link"), { target: { value: "https://maps.app.goo.gl/Example" } });
+  fireEvent.click(await screen.findByLabelText(/Workshop RSVP/));
+  fireEvent.submit(screen.getByRole("button", { name: "Create & show on selected forms" }).closest("form")!);
+  await waitFor(() => expect(mocks.submit).toHaveBeenCalledWith("/api/admin/workshops", expect.objectContaining({ attachments: [{ formId: "form-1", expectedUpdatedAt: "version-1", expectedDraftVersion: null }] })));
+});
+it("renders confirmed workshop details and a safe external Maps action with the editable thank-you message", () => {
+  render(createElement(FormThankYou, { message: "Bring your NIC and arrive early.", referenceNo: "REG-SAMPLE", workshop: { ...w, google_maps_url: "https://maps.app.goo.gl/Example" } }));
+  expect(screen.getByText("Bring your NIC and arrive early.")).toBeTruthy();
+  expect(screen.getByText("Workshop 1")).toBeTruthy();
+  expect(screen.getByText("Campus Road")).toBeTruthy();
+  expect(screen.getByRole("link", { name: /Open in Google Maps/ }).getAttribute("href")).toBe("https://maps.app.goo.gl/Example");
+});
 it("lists ten distinct workshop links and filters by name", async () => {
   render(createElement(WorkshopsPage));
   expect(screen.getAllByRole("link", { name: /Open workshop/ })).toHaveLength(
@@ -183,9 +203,10 @@ it("keeps an edit's expected version and original timestamps when a background r
   expect(saved).toHaveBeenCalled();
 });
 it("retains a stale edit for review after a version conflict", async () => {
-  mocks.api.mockRejectedValueOnce(
-    new Error("This workshop changed. Reload before saving."),
-  );
+  mocks.api.mockImplementation(async (url: string) => {
+    if (url === "/api/admin/workshops/options") return { forms: [], templates: [] };
+    throw new Error("This workshop changed. Reload before saving.");
+  });
   render(createElement(WorkshopEditor, { workshop: w, onSaved: vi.fn() }));
   fireEvent.change(screen.getByLabelText("Total seats"), {
     target: { value: "80" },
@@ -339,7 +360,8 @@ it("previews only this workshop and sends the selected subset with its signed pr
         phone: "0770000001",
         subject: "Workshop 1 reminder",
         text: "Come to Campus",
-        recent: true,
+        alreadyNotified: false,
+        deliveryStatus: null,
         token: "token-1",
       },
       {
@@ -349,7 +371,8 @@ it("previews only this workshop and sends the selected subset with its signed pr
         phone: "0770000002",
         subject: "Workshop 1 reminder",
         text: "Come to Campus",
-        recent: false,
+        alreadyNotified: false,
+        deliveryStatus: null,
         token: "token-2",
       },
     ],
@@ -369,7 +392,7 @@ it("previews only this workshop and sends the selected subset with its signed pr
     }),
   );
   fireEvent.click(screen.getByRole("button", { name: "Preview recipients" }));
-  await screen.findByText(/2 of 2 eligible/);
+  await screen.findByText(/2 new recipients/);
   expect(mocks.api).toHaveBeenCalledWith(
     "/api/admin/workshops/workshop-1/reminders?kind=manual",
     undefined,
@@ -397,4 +420,21 @@ it("previews only this workshop and sends the selected subset with its signed pr
     ),
   );
   await screen.findByText("One reminder queued");
+});
+it("leaves already contacted workshop participants unselected and disabled", async () => {
+  mocks.api.mockResolvedValue({
+    kind: "manual",
+    operationId: "second-preview",
+    expiresAt: Date.now() + 60000,
+    recipients: [
+      { id: "b1", name: "First", email: "first@example.com", phone: "0770000001", subject: "Reminder", text: "Come", alreadyNotified: true, deliveryStatus: "sent", token: "old-token" },
+      { id: "b2", name: "Second", email: "second@example.com", phone: "0770000002", subject: "Reminder", text: "Come", alreadyNotified: false, deliveryStatus: null, token: "new-token" },
+    ],
+  });
+  render(createElement(WorkshopReminders, { workshop: details(), onChanged: mocks.reload }));
+  fireEvent.click(screen.getByRole("button", { name: "Preview recipients" }));
+  await screen.findByText(/1 new recipients/);
+  expect(screen.getByLabelText(/First ·/)).toHaveProperty("disabled", true);
+  expect(screen.getByLabelText(/Second ·/)).toHaveProperty("checked", true);
+  expect(screen.getByRole("button", { name: "Send to 1 selected participants" })).toBeTruthy();
 });

@@ -162,6 +162,7 @@ export default function FormEmailRouting({
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <h3 className="font-bold">{row.title}</h3>
+                {row.type === "workshop_rsvp" && <p className="mt-2 text-xs text-slate-600">Booking confirmations are configured on the workshop. This form receipt is only an additional email when enabled in Builder → Workshop settings, or a fallback when no workshop confirmation applies.</p>}
                 <p className="mt-1 text-xs text-slate-500">
                   {row.type} · {row.active ? "Published" : "Closed or draft"}
                 </p>

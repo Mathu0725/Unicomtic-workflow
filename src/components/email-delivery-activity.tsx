@@ -34,7 +34,7 @@ export default function EmailDeliveryActivity({
   }, []);
   const queue = useLiveData(
     `/api/admin/notifications?${new URLSearchParams({ stage, status, type, search, ...extra, page: String(page), revision: String(revision) })}`,
-    5000,
+    30000,
   );
   const filter = (setter: (value: string) => void, value: string) => {
     setter(value);
@@ -52,7 +52,7 @@ export default function EmailDeliveryActivity({
         <div>
           <h2 className="text-lg font-bold">Delivery activity</h2>
           <p className="mt-1 text-xs text-slate-500">
-            Updates every 5 seconds. Failed attempts show the reason and next
+            Updates every 30 seconds. Failed attempts show the reason and next
             action.
           </p>
         </div>

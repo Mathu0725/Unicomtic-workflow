@@ -1,33 +1,37 @@
 "use client";
 import { apiResponse } from "@/lib/client/api";
-import { Notice as RequestNotice } from "@/components/live-data";
+import { Notice as RequestNotice, buttonClass } from "@/components/live-data";
+import { AssignInterviewForm, CreateInterviewForm, IntakeSelect, type CandidateOption, type IntakeOption } from "@/components/admissions-workflow-controls";
+import type { Interview, InterviewCandidate, InterviewEvaluation } from "@/lib/data/store";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { 
-  Users2, 
-  Calendar, 
   MapPin, 
-  CheckCircle2, 
   Clock, 
-  Award, 
   Plus, 
   Loader2, 
   X, 
   FileEdit 
 } from "lucide-react";
 
+type CandidateView = InterviewCandidate & { studentName: string; district: string; evaluation: InterviewEvaluation | null };
+type InterviewView = Interview & { totalCandidates: number; candidates: CandidateView[] };
 export default function AdminInterviewsPage() {
   const [pageError, setPageError] = useState("");
-  const [interviews, setInterviews] = useState<any[]>([]);
+  const [interviews, setInterviews] = useState<InterviewView[]>([]);
+  const [intakes, setIntakes] = useState<IntakeOption[]>([]), [campaignId, setCampaignId] = useState("");
+  const [candidates, setCandidates] = useState<CandidateOption[]>([]), [interviewer, setInterviewer] = useState("");
+  const [creating, setCreating] = useState(false), [assigning, setAssigning] = useState<string | null>(null), [message, setMessage] = useState("");
+  const dialog = useRef<HTMLDialogElement>(null);
   const [loading, setLoading] = useState(true);
-  const [selectedCandidate, setSelectedCandidate] = useState<any | null>(null);
+  const [selectedCandidate, setSelectedCandidate] = useState<CandidateView | null>(null);
 
   // Rubric Evaluation Form
-  const [commScore, setCommScore] = useState(20);
-  const [techScore, setTechScore] = useState(30);
-  const [anaScore, setAnaScore] = useState(20);
-  const [overallScore, setOverallScore] = useState(12);
-  const [recommendation, setRecommendation] = useState<any>("recommend");
+  const [commScore, setCommScore] = useState(0);
+  const [techScore, setTechScore] = useState(0);
+  const [anaScore, setAnaScore] = useState(0);
+  const [overallScore, setOverallScore] = useState(0);
+  const [recommendation, setRecommendation] = useState<InterviewEvaluation["recommendation"]>("neutral");
   const [notes, setNotes] = useState("");
   const [submittingEval, setSubmittingEval] = useState(false);
 
@@ -38,6 +42,8 @@ export default function AdminInterviewsPage() {
       const res = await apiResponse("/api/admin/interviews");
       const data = await res.json();
       if (data.interviews) setInterviews(data.interviews);
+      setIntakes(data.campaigns || []); setCandidates(data.candidates || []); setInterviewer(data.interviewerName || "");
+      setCampaignId(current => current || data.campaigns?.find((item: IntakeOption) => item.id === new URLSearchParams(window.location.search).get("campaignId"))?.id || data.campaigns?.find((item: IntakeOption) => item.is_active)?.id || data.campaigns?.[0]?.id || "");
     } catch (e) {
       setPageError(e instanceof Error ? e.message : "Could not load or save this data. Please try again.");
     } finally {
@@ -49,16 +55,24 @@ export default function AdminInterviewsPage() {
     fetchInterviews();
   }, []);
 
-  const handleOpenEvaluation = (cand: any) => {
+  useEffect(() => { if (selectedCandidate) dialog.current?.showModal(); }, [selectedCandidate]);
+
+  const saveWorkflow = async (action: Record<string, unknown>) => {
+    const response = await apiResponse("/api/admin/interviews", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(action) });
+    const data = await response.json();
+    setMessage(data.message); setCreating(false); setAssigning(null);
+    await fetchInterviews();
+  };
+
+  const handleOpenEvaluation = (cand: CandidateView) => {
+    setPageError("");
     setSelectedCandidate(cand);
-    if (cand.evaluation) {
-      setCommScore(cand.evaluation.communication_score);
-      setTechScore(cand.evaluation.technical_score);
-      setAnaScore(cand.evaluation.analytical_score);
-      setOverallScore(cand.evaluation.overall_score);
-      setRecommendation(cand.evaluation.recommendation);
-      setNotes(cand.evaluation.notes || "");
-    }
+    setCommScore(cand.evaluation?.communication_score ?? 0);
+    setTechScore(cand.evaluation?.technical_score ?? 0);
+    setAnaScore(cand.evaluation?.analytical_score ?? 0);
+    setOverallScore(cand.evaluation?.overall_score ?? 0);
+    setRecommendation(cand.evaluation?.recommendation ?? "neutral");
+    setNotes(cand.evaluation?.notes || "");
   };
 
   const handleSubmitEvaluation = async (e: React.FormEvent) => {
@@ -75,7 +89,7 @@ export default function AdminInterviewsPage() {
           action: "submit_evaluation",
           candidateId: selectedCandidate.id,
           expectedSubmittedAt: selectedCandidate.evaluation?.submitted_at || null,
-          interviewerName: "Prof. Panel Chair",
+          interviewerName: interviewer,
           communicationScore: commScore,
           technicalScore: techScore,
           analyticalScore: anaScore,
@@ -100,15 +114,20 @@ export default function AdminInterviewsPage() {
   return (
     <div className="space-y-6">
       <RequestNotice error>{pageError}</RequestNotice>
+      <RequestNotice>{message}</RequestNotice>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <span className="text-xs font-bold text-blue-600 uppercase tracking-wider">Module 12 (Stage 11)</span>
+          <span className="text-xs font-bold text-blue-600 uppercase tracking-wider">Admissions · Interviews</span>
           <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">Interview Boards & Candidate Scoring</h1>
           <p className="text-xs sm:text-sm text-slate-500 mt-1">
             Conduct panel admissions interviews, manage candidate slots, and record confidential evaluation rubrics.
           </p>
         </div>
+        <button className={buttonClass} disabled={loading || !campaignId} onClick={() => { setCreating(true); setAssigning(null); }}><Plus className="h-4 w-4" />Create interview session</button>
       </div>
+
+      <IntakeSelect intakes={intakes} value={campaignId} onChange={id => { setCampaignId(id); setCreating(false); setAssigning(null); setMessage(""); }} />
+      {creating && <CreateInterviewForm key={campaignId} campaignId={campaignId} onSave={saveWorkflow} onCancel={() => setCreating(false)} />}
 
       {/* Sessions View */}
       <div className="space-y-6">
@@ -118,7 +137,7 @@ export default function AdminInterviewsPage() {
             Loading interview sessions...
           </div>
         ) : (
-          interviews.map((intv) => (
+          interviews.filter(intv => !campaignId || intv.campaign_id === campaignId).map((intv) => (
             <div key={intv.id} className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-slate-100 gap-2">
                 <div>
@@ -126,7 +145,7 @@ export default function AdminInterviewsPage() {
                   <div className="flex flex-wrap gap-3 text-xs text-slate-500 mt-1">
                     <span className="flex items-center gap-1">
                       <Clock className="w-3.5 h-3.5" />
-                      {new Date(intv.date).toLocaleString()}
+                      {new Date(intv.date).toLocaleString("en-GB", { timeZone: "Asia/Colombo" })}
                     </span>
                     <span className="flex items-center gap-1">
                       <MapPin className="w-3.5 h-3.5 text-blue-600" />
@@ -138,6 +157,12 @@ export default function AdminInterviewsPage() {
                   {intv.totalCandidates} Assigned Candidates
                 </span>
               </div>
+
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+                <p className="text-sm text-slate-500">{intv.status.replaceAll("_", " ")} · Times shown in Sri Lanka time</p>
+                <button className={buttonClass} disabled={intv.status === "completed"} onClick={() => { setAssigning(intv.id); setCreating(false); }}>Assign candidates</button>
+              </div>
+              {assigning === intv.id && <div className="mt-4"><AssignInterviewForm key={intv.id} interviewId={intv.id} start={new Date(Math.max(Date.parse(intv.date), ...intv.candidates.filter(c => c.status !== "cancelled").map(c => Date.parse(c.time_slot) + 30 * 60000))).toISOString()} candidates={candidates.filter(c => c.campaignId === intv.campaign_id && !intv.candidates.some(assigned => assigned.student_id === c.studentId))} onSave={saveWorkflow} onCancel={() => setAssigning(null)} /></div>}
 
               {/* Panel members */}
               <div className="mt-3 text-xs text-slate-600">
@@ -159,11 +184,12 @@ export default function AdminInterviewsPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {intv.candidates.map((cand: any) => (
+                    {!intv.candidates.length && <tr><td colSpan={6} className="p-6 text-center text-slate-500">No candidates assigned. Choose candidates to schedule their interviews.</td></tr>}
+                    {intv.candidates.map((cand) => (
                       <tr key={cand.id} className="hover:bg-slate-50">
                         <td className="p-3 font-bold text-slate-900">{cand.studentName}</td>
                         <td className="p-3 font-mono text-slate-500">
-                          {new Date(cand.time_slot).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                          {new Date(cand.time_slot).toLocaleString("en-GB", { timeZone: "Asia/Colombo", dateStyle: "medium", timeStyle: "short" })}
                         </td>
                         <td className="p-3">{cand.district}</td>
                         <td className="p-3">
@@ -183,6 +209,7 @@ export default function AdminInterviewsPage() {
                         <td className="p-3 text-right">
                           <button
                             onClick={() => handleOpenEvaluation(cand)}
+                            disabled={cand.status === "cancelled"}
                             className="px-3 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-xs transition inline-flex items-center gap-1"
                           >
                             <FileEdit className="w-3.5 h-3.5" />
@@ -197,31 +224,35 @@ export default function AdminInterviewsPage() {
             </div>
           ))
         )}
+        {!loading && !interviews.some(intv => !campaignId || intv.campaign_id === campaignId) && <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center"><h2 className="font-bold text-slate-900">No interview sessions yet</h2><p className="mt-2 text-sm text-slate-500">Create a session for this intake, then assign candidates and record their evaluations.</p></div>}
       </div>
 
       {/* Evaluation Rubric Modal */}
       {selectedCandidate && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+        <dialog ref={dialog} aria-labelledby="evaluation-title" onCancel={event => { event.preventDefault(); if (!submittingEval) setSelectedCandidate(null); }} className="m-auto max-h-[90dvh] w-[calc(100%_-_2rem)] max-w-lg overflow-y-auto rounded-2xl p-0 backdrop:bg-slate-900/60">
           <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-xl relative text-xs">
             <button
               onClick={() => setSelectedCandidate(null)}
+              aria-label="Close evaluation" disabled={submittingEval}
               className="p-1 rounded-lg text-slate-400 hover:text-slate-700 absolute top-4 right-4"
             >
               <X className="w-5 h-5" />
             </button>
 
-            <h2 className="text-base font-bold text-slate-900 mb-1">
+            <h2 id="evaluation-title" className="text-base font-bold text-slate-900 mb-1 pr-6">
               Confidential Evaluation Rubric: {selectedCandidate.studentName}
             </h2>
             <p className="text-slate-500 mb-4">Admissions Committee Panel Assessment</p>
+            <RequestNotice error>{pageError}</RequestNotice>
 
             <form onSubmit={handleSubmitEvaluation} className="space-y-4">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">
+                  <label htmlFor="communication-score" className="block font-semibold text-slate-700 mb-1">
                     Communication & Articulation (Max 25)
                   </label>
                   <input
+                    id="communication-score" required
                     type="number"
                     max={25}
                     min={0}
@@ -231,10 +262,11 @@ export default function AdminInterviewsPage() {
                   />
                 </div>
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">
+                  <label htmlFor="technical-score" className="block font-semibold text-slate-700 mb-1">
                     Technical Aptitude (Max 35)
                   </label>
                   <input
+                    id="technical-score" required
                     type="number"
                     max={35}
                     min={0}
@@ -247,10 +279,11 @@ export default function AdminInterviewsPage() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">
+                  <label htmlFor="analytical-score" className="block font-semibold text-slate-700 mb-1">
                     Analytical Reasoning (Max 25)
                   </label>
                   <input
+                    id="analytical-score" required
                     type="number"
                     max={25}
                     min={0}
@@ -260,10 +293,11 @@ export default function AdminInterviewsPage() {
                   />
                 </div>
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">
+                  <label htmlFor="overall-score" className="block font-semibold text-slate-700 mb-1">
                     Attitude & Culture Fit (Max 15)
                   </label>
                   <input
+                    id="overall-score" required
                     type="number"
                     max={15}
                     min={0}
@@ -275,10 +309,11 @@ export default function AdminInterviewsPage() {
               </div>
 
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">Panel Recommendation</label>
+                <label htmlFor="recommendation" className="block font-semibold text-slate-700 mb-1">Panel Recommendation</label>
                 <select
+                  id="recommendation"
                   value={recommendation}
-                  onChange={(e) => setRecommendation(e.target.value)}
+                  onChange={(e) => setRecommendation(e.target.value as InterviewEvaluation["recommendation"])}
                   className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white font-bold"
                 >
                   <option value="strongly_recommend">Strongly Recommend for Direct Admission</option>
@@ -289,8 +324,9 @@ export default function AdminInterviewsPage() {
               </div>
 
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">Confidential Interviewer Notes</label>
+                <label htmlFor="evaluation-notes" className="block font-semibold text-slate-700 mb-1">Confidential Interviewer Notes</label>
                 <textarea
+                  id="evaluation-notes"
                   rows={2}
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
@@ -303,6 +339,7 @@ export default function AdminInterviewsPage() {
                 <button
                   type="button"
                   onClick={() => setSelectedCandidate(null)}
+                  disabled={submittingEval}
                   className="px-4 py-2 rounded-xl bg-slate-100 font-bold"
                 >
                   Cancel
@@ -317,7 +354,7 @@ export default function AdminInterviewsPage() {
               </div>
             </form>
           </div>
-        </div>
+        </dialog>
       )}
     </div>
   );

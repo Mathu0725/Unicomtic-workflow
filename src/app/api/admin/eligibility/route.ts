@@ -34,7 +34,7 @@ async function handlePOST(req: NextRequest) {
         studentExamId: attendance?.student_exam_id || "N/A",
         district: student.district,
         hasAttendedWorkshop: Boolean(attendance),
-        hasSubmittedApplication: app ? app.status === "submitted" || app.status === "approved" : false,
+        hasSubmittedApplication: app ? ["submitted", "under_review", "approved"].includes(app.status) : false,
         examScore: examRes ? examRes.raw_score : null,
         registrationDate: reg?.created_at || student.created_at,
         alZScore: app?.al_results.z_score ? parseFloat(app.al_results.z_score) : null,
@@ -51,6 +51,8 @@ async function handlePOST(req: NextRequest) {
 
     return NextResponse.json({
       success: true,
+      campaignId: campaign.id,
+      campaigns: db.campaigns.map(item => ({ id: item.id, title: item.title, is_active: item.is_active })),
       campaignTitle: campaign?.title,
       criteriaApplied: {
         minExamScore,

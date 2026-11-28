@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { api, useLiveData, Notice, panelClass, inputClass, buttonClass } from "@/components/live-data";
+import { defaultEmailWorkflow, emailWorkflowFields } from "@/lib/email/workflow-settings";
 import type { PortalSettings } from "@/lib/settings";
 
 export default function GeneralSettingsPage() {
@@ -76,6 +77,13 @@ export default function GeneralSettingsPage() {
                 <input className={inputClass} type={key === "contactEmail" ? "email" : "text"} value={draft[key]} onChange={event => setDraft({ ...draft, [key]: event.target.value })} />
               </label>
             ))}
+          </section>
+          <section className={panelClass}>
+            <h2 className="font-bold">Email dates and form links</h2>
+            <p className="text-sm text-slate-600">Used in application, workshop invitation, interview and enrollment emails. Set the current intake details before sending. Workshop reminders use each workshop’s own date and location.</p>
+            {emailWorkflowFields.map(([key, label, type]) => <label className="block text-sm" key={key}>{label}
+              <input className={inputClass} type={type} maxLength={type === "url" ? 2048 : 500} value={draft.emailWorkflow?.[key] ?? defaultEmailWorkflow[key] ?? ""} onChange={event => setDraft({ ...draft, emailWorkflow: { ...defaultEmailWorkflow, ...draft.emailWorkflow, [key]: event.target.value } })} />
+            </label>)}
           </section>
           <button className={buttonClass} disabled={busy}>{busy ? "Saving…" : "Save configuration"}</button>
         </form>

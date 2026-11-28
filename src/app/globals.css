@@ -3,14 +3,94 @@
 @tailwind utilities;
 
 :root {
-  --foreground-rgb: 15, 23, 42;
-  --background-start-rgb: 248, 250, 252;
-  --background-end-rgb: 255, 255, 255;
+  color-scheme: light;
+  --color-canvas: #f5f7fb;
+  --color-surface: #ffffff;
+  --color-ink: #17243b;
+  --color-muted: #64748b;
+  --color-line: #dfe6ef;
+  --color-brand: #1d5fbd;
+  --color-brand-strong: #174b99;
+  --shadow-card: 0 1px 2px rgb(18 42 77 / 4%), 0 10px 32px rgb(18 42 77 / 4%);
 }
 
+* { box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
+
 body {
-  color: rgb(var(--foreground-rgb));
-  background: #f8fafc;
+  color: var(--color-ink);
+  background: var(--color-canvas);
   min-height: 100vh;
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+  font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection { background: #cfe3ff; color: #173b74; }
+
+:where(button, a, input, select, textarea, summary):focus-visible {
+  outline: 3px solid #7bb6ff;
+  outline-offset: 2px;
+}
+
+button, input, select, textarea { font: inherit; }
+button { touch-action: manipulation; }
+
+.admin-shell { background: var(--color-canvas); }
+.admin-skip-link { position: fixed; z-index: 100; top: .75rem; left: .75rem; transform: translateY(-180%); border-radius: .75rem; background: #fff; color: #174b99; padding: .75rem 1rem; font-weight: 700; box-shadow: 0 8px 24px rgb(15 35 65 / 20%); }
+.admin-skip-link:focus { transform: translateY(0); }
+.admin-sidebar { background: linear-gradient(180deg, #101f36 0%, #142b49 54%, #10213a 100%); }
+.admin-content { background: radial-gradient(circle at 90% 0%, #eaf2ff 0, transparent 25rem), var(--color-canvas); }
+.admin-content :where([id]) { scroll-margin-top: 5rem; }
+.admin-topbar { background: rgb(255 255 255 / 92%); border-bottom: 1px solid var(--color-line); backdrop-filter: blur(18px); }
+.dashboard-heading { background: linear-gradient(115deg, #fff 5%, #f1f7ff 100%); box-shadow: var(--shadow-card); }
+.admin-page { max-width: 1440px; margin-inline: auto; }
+.admin-page h1 { letter-spacing: -.035em; line-height: 1.15; }
+.admin-page h2 { letter-spacing: -.02em; }
+.admin-page :where(input:not([type="checkbox"]):not([type="radio"]), select, textarea) {
+  min-height: 40px;
+  border-color: #cdd8e5;
+  transition: border-color .16s ease, box-shadow .16s ease, background-color .16s ease;
+}
+.admin-page :where(input:not([type="checkbox"]):not([type="radio"]), select, textarea):hover:not(:disabled) { border-color: #9db4d0; }
+.admin-page :where(input:not([type="checkbox"]):not([type="radio"]), select, textarea):focus-visible {
+  border-color: var(--color-brand);
+  outline: 0;
+  box-shadow: 0 0 0 3px rgb(29 95 189 / 14%);
+}
+.admin-page :where(input, select, textarea):disabled { background-color: #f1f4f8; cursor: not-allowed; }
+.admin-page :where(table) { border-collapse: separate; border-spacing: 0; }
+.admin-page :where(th) { color: #50627d; font-size: .7rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; white-space: nowrap; }
+.admin-page :where(tbody tr) { transition: background-color .15s ease; }
+.admin-page :where(tbody tr:hover) { background: #f8fbff; }
+.admin-page :where(td) { vertical-align: top; }
+.admin-page :where(button, a) { transition-property: color, background-color, border-color, box-shadow, transform; transition-duration: .16s; }
+.admin-page :where(button):active:not(:disabled) { transform: translateY(1px); }
+.admin-page :where(button):disabled { cursor: not-allowed; }
+.admin-page :where(.shadow-sm) { box-shadow: var(--shadow-card); }
+.admin-page .bg-white.rounded-2xl { border-color: var(--color-line); box-shadow: var(--shadow-card); }
+.admin-page .bg-white.rounded-xl { border-color: var(--color-line); }
+.admin-page :where(.overflow-x-auto) { scrollbar-color: #bccbdd transparent; scrollbar-width: thin; }
+.admin-page :where(.overflow-x-auto)::-webkit-scrollbar { height: 8px; }
+.admin-page :where(.overflow-x-auto)::-webkit-scrollbar-thumb { background: #bccbdd; border-radius: 999px; }
+.admin-page :where(input[type="checkbox"], input[type="radio"]) { accent-color: var(--color-brand); }
+.admin-page :where(textarea) { line-height: 1.55; }
+.admin-page :where(dialog) { max-width: min(640px, calc(100vw - 2rem)); border: 1px solid var(--color-line); border-radius: 1.25rem; box-shadow: 0 24px 70px rgb(15 35 65 / 20%); }
+.admin-page :where(dialog)::backdrop { background: rgb(15 30 50 / 55%); backdrop-filter: blur(3px); }
+.admin-page :where([role="status"]) { line-height: 1.5; }
+
+.public-page { background: radial-gradient(circle at 15% 0%, #e6f0ff 0, transparent 28rem), var(--color-canvas); }
+.public-card { background: var(--color-surface); border: 1px solid var(--color-line); box-shadow: var(--shadow-card); }
+.public-page :where(input:not([type="checkbox"]):not([type="radio"]), select, textarea) { min-height: 44px; }
+
+@media (max-width: 640px) {
+  .admin-page :where(table) { font-size: .8125rem; }
+  .admin-page :where(th, td) { padding: .625rem; }
+  .admin-page :where(h1) { font-size: 1.65rem; }
+  .public-page :where(h1) { line-height: 1.18; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }

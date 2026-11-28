@@ -126,11 +126,13 @@ it("binds application uploads and their retry keys to the verified candidate", a
   expect((await postAnswers(other.receipt, otherPerson, undefined, otherCookie)).status).toBe(200);
   expect((await readDatabase()).applications).toHaveLength(2);
 });
-it("refuses uninvited application uploads before contacting Drive", async () => {
+it("accepts verified registered applicants' uploads without an invitation status", async () => {
   const [cookie] = await applicationCandidates();
   await transaction(db => { db.registrations[0].status = "registered"; });
-  expect((await upload({ cookie })).status).toBe(403);
-  expect(files.size).toBe(0); expect((await readDatabase()).documentUploads).toHaveLength(0);
+  await setupDrive(adminRequest({ action: "create_folder" }), undefined);
+  expect((await upload({ cookie })).status).toBe(200);
+  expect(files.size).toBe(2);
+  expect((await readDatabase()).documentUploads[0].candidate_registration_id).toBe((await readDatabase()).registrations[0].id);
 });
 
 it("creates one private documents folder and reuses it on setup retries", async () => {

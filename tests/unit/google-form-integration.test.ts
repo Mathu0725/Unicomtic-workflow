@@ -9,7 +9,7 @@ describe("Google Form Integration & Real-Time Sync", () => {
     expect(form).toBeDefined();
     expect(form?.google_form_config).toBeDefined();
     expect(form?.google_form_config?.enabled).toBe(true);
-    expect(form?.google_form_config?.form_url).toContain("docs.google.com/forms");
+    expect(form?.google_form_config?.form_url).toBe("https://example.invalid/google-form");
     expect(form?.google_form_config?.response_mode).toBe("webhook");
   });
 

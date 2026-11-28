@@ -6,7 +6,7 @@ export function formSlugProblem(value: string) {
   return "";
 }
 
-export function formHasPublicKey(form: CustomForm, key: string) {
+export function formHasPublicKey(form: Pick<CustomForm, "id" | "slug" | "previous_slugs">, key: string) {
   return form.id === key || form.slug === key || form.previous_slugs?.includes(key) === true;
 }
 

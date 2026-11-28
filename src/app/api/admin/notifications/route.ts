@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { decisionJobIsCurrent } from "@/lib/admissions/decision-notifications";
 import { route, RequestError } from "@/lib/http";
 import { getDb } from "@/lib/data/store";
 import { queueEmail } from "@/lib/jobs/outbox";
@@ -253,7 +254,7 @@ export const POST = route(
       const decision = db.selectionDecisions.find(
         (item) => item.id === job.payload.decisionId,
       );
-      if (decision) {
+      if (decision && decisionJobIsCurrent(db, job)) {
         decision.notification_status = "sent";
         decision.notified_at = job.completed_at;
       }
@@ -313,12 +314,7 @@ export const POST = route(
           { code: "SHEET_DESTINATION_CHANGED" },
         );
       if (
-        job.payload.decisionId &&
-        !getDb().selectionDecisions.some(
-          (d) =>
-            d.id === job.payload.decisionId &&
-            job.key === `decision:${d.id}:${d.final_status}`,
-        )
+        !decisionJobIsCurrent(getDb(), job)
       )
         throw new RequestError(
           "This job does not match the current decision. Queue the current decision notification instead.",

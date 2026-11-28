@@ -21,7 +21,7 @@ function ConfirmationContent() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 py-12 px-4 sm:px-6 lg:px-8 flex items-center justify-center">
+    <div className="public-page min-h-screen py-12 px-4 sm:px-6 lg:px-8 flex items-center justify-center">
       <div className="max-w-xl w-full">
         {/* Main Card */}
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden text-center p-8">

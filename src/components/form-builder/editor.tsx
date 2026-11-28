@@ -501,7 +501,7 @@ export default function FormBuilderEditor({ id }: { id: string }) {
                   <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
                     <div
                       onClick={() => selectField(null)}
-                      className={`w-full bg-[#4d4d4d] p-5 text-left text-white ${selected === null ? "ring-2 ring-inset ring-blue-400" : ""}`}
+                      className={`w-full bg-[#142b49] p-5 text-left text-white ${selected === null ? "ring-2 ring-inset ring-blue-400" : ""}`}
                     >
                       <p className="text-[10px] font-semibold tracking-wide text-neutral-200">
                         UNICOM TIC PORTAL
@@ -672,7 +672,7 @@ export default function FormBuilderEditor({ id }: { id: string }) {
                       </button>
                     </div>
                     <div className="border-t border-slate-100 p-5">
-                      <div className="rounded-xl bg-[#4d4d4d] p-3 text-center text-sm font-bold text-white">
+                      <div className="rounded-xl bg-[#142b49] p-3 text-center text-sm font-bold text-white">
                         {resolveFormMessages(values.messages).submitButtonLabel}
                       </div>
                     </div>

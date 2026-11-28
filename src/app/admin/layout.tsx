@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { api, Notice } from "@/components/live-data";
 import { ApiError } from "@/lib/client/api";
 import Link from "next/link";
@@ -20,11 +20,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const pathname = usePathname();
   const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [currentUser, setCurrentUser] = useState<{ name: string; email: string; role: string }>({
-    name: "Dr. Admissions Dean",
-    email: "admin@unicomtic.org",
-    role: "super_admin",
-  });
+  const sidebarRef = useRef<HTMLElement>(null);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const [currentUser, setCurrentUser] = useState<{ name: string; email: string; role: string } | null>(null);
   const [loggingOut, setLoggingOut] = useState(false);
   const [sessionChecked, setSessionChecked] = useState(false);
   const [sessionError, setSessionError] = useState("");
@@ -34,6 +32,30 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     window.addEventListener("admissions:session-expired", expired);
     return () => window.removeEventListener("admissions:session-expired", expired);
   }, [pathname, router]);
+
+  useEffect(() => {
+    if (!sidebarOpen) return;
+    const sidebar = sidebarRef.current;
+    const desktop = window.matchMedia("(min-width: 768px)");
+    if (!sidebar || desktop.matches) return;
+    const focusable = () => Array.from(sidebar.querySelectorAll<HTMLElement>(
+      'a[href], button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])'
+    )).filter(element => element.getClientRects().length > 0);
+    focusable()[0]?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") { event.preventDefault(); setSidebarOpen(false); return; }
+      if (event.key !== "Tab") return;
+      const items = focusable();
+      if (!items.length) { event.preventDefault(); return; }
+      if (!sidebar.contains(document.activeElement)) { event.preventDefault(); items[0].focus(); }
+      else if (event.shiftKey && document.activeElement === items[0]) { event.preventDefault(); items[items.length - 1].focus(); }
+      else if (!event.shiftKey && document.activeElement === items[items.length - 1]) { event.preventDefault(); items[0].focus(); }
+    };
+    const onBreakpointChange = () => { if (desktop.matches) setSidebarOpen(false); };
+    document.addEventListener("keydown", onKeyDown);
+    desktop.addEventListener("change", onBreakpointChange);
+    return () => { document.removeEventListener("keydown", onKeyDown); desktop.removeEventListener("change", onBreakpointChange); if (!desktop.matches) menuButtonRef.current?.focus(); };
+  }, [sidebarOpen]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -88,52 +110,58 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     }
   };
 
-  if (!sessionChecked) return <div className="p-12 text-sm text-slate-500"><Notice error>{sessionError}</Notice>{sessionError ? <button className="mt-4 text-blue-700 underline" onClick={() => setSessionRetry(n => n + 1)}>Retry session check</button> : <p role="status">Checking staff session…</p>}</div>;
+  if (!sessionChecked || !currentUser) return <div className="flex min-h-dvh items-center justify-center p-6"><div className="public-card w-full max-w-sm rounded-2xl p-7 text-sm text-slate-600"><BrandLogo className="mb-5 h-12 w-12" /><Notice error>{sessionError}</Notice>{sessionError ? <button className="mt-4 font-semibold text-blue-700 underline" onClick={() => setSessionRetry(n => n + 1)}>Retry session check</button> : <p role="status">Checking staff session…</p>}</div></div>;
   const settingsSection = getAdminSettingsSection(pathname);
   return (
-    <div className="flex h-dvh min-h-0 flex-col overflow-hidden bg-slate-100 md:flex-row">
+    <div className="admin-shell flex h-dvh min-h-0 flex-col overflow-hidden md:flex-row">
+      <a href="#admin-page-content" className="admin-skip-link">Skip to main content</a>
       {/* Mobile Header */}
-      <div className="md:hidden bg-slate-900 text-white p-4 flex shrink-0 items-center justify-between sticky top-0 z-50">
+      <div className="admin-sidebar md:hidden flex shrink-0 items-center justify-between border-b border-white/10 px-4 py-3 text-white sticky top-0 z-50">
         <div className="flex items-center space-x-2">
           <BrandLogo className="h-9 w-9" priority />
-          <span className="font-bold text-base">Unicom TIC Admin</span>
+          <span className="text-sm font-bold tracking-tight">Unicom TIC</span>
         </div>
         <button
+          ref={menuButtonRef}
           type="button"
           aria-label={sidebarOpen ? "Close navigation" : "Open navigation"}
           aria-expanded={sidebarOpen}
           aria-controls="admin-navigation"
           onClick={() => setSidebarOpen(!sidebarOpen)}
-          className="p-1.5 rounded-lg bg-slate-800 text-slate-300"
+          className="flex h-11 w-11 items-center justify-center rounded-lg border border-white/15 bg-white/10 text-white"
         >
           {sidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
         </button>
       </div>
 
+      {sidebarOpen && <button type="button" aria-label="Close navigation" className="fixed inset-0 z-30 bg-slate-950/60 backdrop-blur-[2px] md:hidden" onClick={() => setSidebarOpen(false)} />}
+
       {/* Sidebar */}
       <aside
-        className={`fixed inset-y-0 left-0 z-40 flex h-dvh min-h-0 w-64 shrink-0 flex-col overflow-hidden bg-slate-900 text-slate-300 transition-transform duration-200 ease-in-out md:relative md:h-full md:translate-x-0 ${
-          sidebarOpen ? "translate-x-0" : "-translate-x-full"
+        ref={sidebarRef}
+        className={`admin-sidebar fixed inset-y-0 left-0 z-40 flex h-dvh min-h-0 w-72 max-w-[85vw] shrink-0 flex-col overflow-hidden text-slate-300 shadow-2xl transition-transform duration-200 ease-in-out md:visible md:relative md:h-full md:translate-x-0 md:shadow-none ${
+          sidebarOpen ? "visible translate-x-0" : "invisible -translate-x-full"
         }`}
       >
         {/* Brand */}
-        <div className="p-4 border-b border-slate-800 flex shrink-0 items-center justify-between">
+        <div className="flex shrink-0 items-center justify-between border-b border-white/10 px-5 py-5">
           <div className="flex items-center space-x-3">
             <BrandLogo className="h-11 w-11" priority />
             <div>
-              <span className="font-bold text-sm text-white tracking-tight block">UNICOM TIC</span>
-              <span className="text-[10px] text-blue-400 font-semibold uppercase tracking-wider block">
-                Lifecycle Admin
+              <span className="block text-sm font-bold tracking-tight text-white">UNICOM TIC</span>
+              <span className="block text-[10px] font-semibold uppercase tracking-[.18em] text-blue-200/80">
+                Admissions workspace
               </span>
             </div>
           </div>
+          <button type="button" onClick={() => setSidebarOpen(false)} aria-label="Close navigation" className="flex h-11 w-11 items-center justify-center rounded-lg text-slate-200 hover:bg-white/10 md:hidden"><X className="h-5 w-5" aria-hidden="true" /></button>
         </div>
 
         {/* Navigation list */}
         <AdminNavigation pathname={pathname} role={currentUser.role} onNavigate={() => setSidebarOpen(false)} />
 
         {/* Staff Profile Footer */}
-        <div className="shrink-0 p-3 border-t border-slate-800 text-xs bg-slate-950/60">
+        <div className="shrink-0 border-t border-white/10 bg-slate-950/20 p-4 text-xs">
           <div className="flex items-center justify-between">
             <div className="overflow-hidden pr-2">
               <div className="flex items-center space-x-1.5 mb-0.5">
@@ -152,7 +180,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               onClick={handleLogout}
               disabled={loggingOut}
               title="Sign Out / Logout"
-              className="p-2 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition flex-shrink-0"
+              aria-label="Sign out"
+              className="flex-shrink-0 rounded-lg p-2.5 text-slate-300 hover:bg-white/10 hover:text-white"
             >
               <LogOut className="w-4 h-4" />
             </button>
@@ -161,8 +190,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       </aside>
 
       {/* Main Content Area */}
-      <main id="admin-page-content" aria-label="Admin page content" tabIndex={-1} className="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain">
-        <div className={/^\/admin\/forms\/[^/]+\/builder$/.test(pathname) ? "p-3 sm:p-5" : "p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto"}>
+      <main id="admin-page-content" aria-label="Admin page content" tabIndex={-1} className="admin-content min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain">
+        <div className="admin-topbar sticky top-0 z-20 hidden h-16 items-center justify-between px-6 lg:flex lg:px-8">
+          <div><span className="text-xs font-bold uppercase tracking-[.15em] text-blue-700">Unicom TIC</span><span className="ml-3 text-sm font-medium text-slate-500">Admissions workspace</span></div>
+          <div className="flex items-center gap-3"><span className="h-2 w-2 rounded-full bg-emerald-500" aria-hidden="true" /><span className="text-xs font-medium text-slate-600">{formatRoleName(currentUser.role)}</span><span className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-100 text-xs font-bold text-blue-800" aria-hidden="true">{currentUser.name?.trim().charAt(0).toUpperCase() || "U"}</span></div>
+        </div>
+        <div className={/^\/admin\/forms\/[^/]+\/builder$/.test(pathname) ? "admin-page p-3 sm:p-5" : "admin-page px-4 py-6 sm:px-6 sm:py-8 lg:px-8 lg:py-9"}>
           <Notice error>{sessionError}</Notice>
           {settingsSection && (
             <nav aria-label="Settings breadcrumb" className="mb-6 flex flex-wrap items-center gap-2 text-sm">

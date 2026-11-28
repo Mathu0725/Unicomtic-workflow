@@ -3,6 +3,16 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 import { NextRequest } from "next/server";
+
+it("saves contract attachments with a system template and snapshots them in rendered notifications", async () => {
+  const attachment = { filename: "contract.pdf", contentType: "application/pdf", content: Buffer.from("%PDF-1.7\ncontract").toString("base64") };
+  expect((await save("selection_selected", { body: "Dear {{name}}", attachments: [attachment] })).status).toBe(200);
+  const db = await readDatabase();
+  const notification = renderNotification(db, "selection_selected", { name: "Student" });
+  expect(notification.attachments).toEqual([attachment]);
+  expect(notification.templateVersion).toBe(1);
+  expect(db.outbox).toHaveLength(0);
+});
 import { GET, POST } from "../../src/app/api/admin/email/templates/route";
 import { POST as notifications } from "../../src/app/api/admin/notifications/route";
 import { GET as reminderSettings } from "../../src/app/api/admin/reminders/route";
