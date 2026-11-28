@@ -413,6 +413,7 @@ export default function PublicCustomFormPage() {
         referenceNo={submitted.referenceNo}
         redirectUrl={submitted.redirectUrl}
         workshop={submitted.workshop}
+        showSocialLinks={form.type === "registration" || form.type === "application"}
       />
     );
   const messages = resolveFormMessages(form.messages);

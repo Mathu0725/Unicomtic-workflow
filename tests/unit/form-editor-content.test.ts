@@ -157,6 +157,28 @@ it("shows a committed reference and configured confirmation text", () => {
   expect(html).toContain("நன்றி! Saved");
   expect(html).not.toContain("javascript:");
 });
+it("shows official social links on the registration confirmation only", () => {
+  const html = renderToStaticMarkup(
+    createElement(FormThankYou, { referenceNo: "REG-SAMPLE", showSocialLinks: true }),
+  );
+  for (const url of [
+    "https://www.facebook.com/unicomtic/",
+    "https://www.instagram.com/unicomtic/",
+    "https://www.tiktok.com/@unicomtic",
+    "https://lk.linkedin.com/company/unicomtic",
+    "https://www.youtube.com/@UnicomTIC",
+  ]) {
+    expect(html).toContain(url);
+  }
+  expect(html).toContain("Follow us for the latest updates");
+  expect(html).toContain("புதிய தகவல்களுக்கு எங்கள் சமூக ஊடகப் பக்கங்களைப் பின்தொடருங்கள்.");
+  expect(html).toContain('rel="noopener noreferrer"');
+  const socialNav = html.slice(html.indexOf('<nav aria-label="Unicom TIC social media"'), html.indexOf("</nav>"));
+  expect(socialNav.match(/<svg\b/g)).toHaveLength(5);
+
+  const otherForm = renderToStaticMarkup(createElement(FormThankYou, { referenceNo: "APP-SAMPLE" }));
+  expect(otherForm).not.toContain("www.facebook.com/unicomtic");
+});
 it("copies and reorders questions using new IDs while preserving rules and options", () => {
   const original: FormField = {
       id: "email",

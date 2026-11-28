@@ -301,6 +301,7 @@ export default function FormSettings({
                   message={values.confirmation_message}
                   referenceNo="APP-27-EXAMPLE"
                   redirectUrl={values.redirect_url}
+                  showSocialLinks={form.type === "registration" || form.type === "application"}
                 />
               </div>
             </div>
