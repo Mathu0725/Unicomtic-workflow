@@ -30,7 +30,20 @@ export default function RemindersPage() {
         templatesLoaded.current = true;
         if (!draftsEdited.current) setDrafts(current => Object.fromEntries(reminderKinds.map(id => [id, { ...current[id], subject: data.templates[id].subject, body: data.templates[id].body }])) as typeof current);
     }, [data?.templates]);
-    useEffect(() => { setSelected([]); setPreviewId(""); setPreviewOpen(false); setPage(0); }, [kind, campaignId, data?.expiresAt]);
+    useEffect(() => { setSelected([]); setPreviewId(""); setPreviewOpen(false); setPage(0); }, [kind, campaignId]);
+    useEffect(() => {
+        if (!data?.recipients) return;
+        const eligible = new Set<string>(data.recipients.filter((row: Recipient) => row.canQueue).map((row: Recipient) => row.id));
+        setSelected(current => current.filter(id => eligible.has(id)));
+    }, [data?.recipients]);
+    const hasPendingDelivery = Boolean(data?.recipients?.some((row: Recipient) => ["queued", "sending"].includes(row.lastStatus || "")));
+    useEffect(() => {
+        if (!hasPendingDelivery) return;
+        const timer = setInterval(() => {
+            if (!busy && document.visibilityState === "visible") void reload();
+        }, 15000);
+        return () => clearInterval(timer);
+    }, [hasPendingDelivery, busy, reload]);
     useEffect(() => { setPage(0); }, [search]);
     const recipients: Recipient[] = data?.recipients || [];
     const visible = recipients.filter(row => `${row.name} ${row.email} ${row.reference} ${row.workshop}`.toLowerCase().includes(search.toLowerCase()));
@@ -67,7 +80,7 @@ export default function RemindersPage() {
             <section aria-labelledby="missing-step-heading" className="space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                     <h2 id="missing-step-heading" className="flex items-center gap-2 text-sm font-bold text-slate-900"><span className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-900 text-xs text-white">1</span>Filter by missing step</h2>
-                    <p className="text-xs text-slate-500">Click a group to see its students</p>
+                    <p className="text-xs text-slate-500">Counts show students still waiting to complete a step, including those already sent a reminder.</p>
                 </div>
                 <div className="grid gap-3 md:grid-cols-3">
                     {reminderKinds.map((value, index) => (
@@ -107,7 +120,7 @@ export default function RemindersPage() {
                             <td className="px-3 py-4"><input aria-label={`Select ${row.name}`} type="checkbox" className="h-4 w-4 rounded accent-blue-600" disabled={busy || !row.canQueue} checked={selected.includes(row.id)} onChange={e => setSelected(current => e.target.checked ? [...current, row.id] : current.filter(id => id !== row.id))} /></td>
                             <td className="px-3 py-4"><span className="text-sm font-semibold text-slate-900">{row.name}</span><span className="mt-1 block text-slate-500">{row.email}</span></td>
                             <td className="max-w-52 px-3 py-4"><span className="text-slate-700">{row.intake}</span><span className="mt-1 block font-mono text-[11px] text-slate-500">{row.reference}</span></td>
-                            <td className="max-w-xs px-3 py-4">{row.workshop && <p className="mb-2 font-semibold">{row.workshop}<br /><span className="font-normal text-slate-500">{row.date} (Sri Lanka)</span></p>}<span className={`inline-flex rounded-full px-2 py-1 text-[10px] font-semibold ${row.canQueue ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-800"}`}>{row.canQueue ? "Ready to remind" : "On hold"}</span>{row.lastStatus && <p className="mt-1.5 text-[11px] text-slate-500">Last: {row.lastStatus}{row.lastReminderAt && ` · ${new Date(row.lastReminderAt).toLocaleString()}`}</p>}{row.reason && <p className="mt-1.5 leading-relaxed text-amber-700">{row.reason}</p>}</td>
+                            <td className="max-w-xs px-3 py-4">{row.workshop && <p className="mb-2 font-semibold">{row.workshop}<br /><span className="font-normal text-slate-500">{row.date} (Sri Lanka)</span></p>}<span className={`inline-flex rounded-full px-2 py-1 text-[10px] font-semibold ${row.canQueue || row.lastStatus === "sent" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-800"}`}>{row.lastStatus === "sent" && !row.canQueue ? "Sent" : row.canQueue ? "Ready to remind" : "On hold"}</span>{row.lastStatus && <p className="mt-1.5 text-[11px] text-slate-500">Last: {row.lastStatus}{row.lastReminderAt && ` · ${new Date(row.lastReminderAt).toLocaleString()}`}</p>}{row.reason && <p className="mt-1.5 leading-relaxed text-amber-700">{row.reason}</p>}</td>
                             <td className="px-3 py-4"><button type="button" aria-haspopup="dialog" aria-controls="reminder-email-preview-modal" onClick={() => openPreview(row.id)} className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-slate-200 bg-white px-2.5 py-2 font-semibold text-slate-700 hover:border-blue-300 hover:text-blue-700"><Eye className="h-3.5 w-3.5" aria-hidden="true" />Preview</button></td>
                         </tr>)}</tbody>
                     </table>
